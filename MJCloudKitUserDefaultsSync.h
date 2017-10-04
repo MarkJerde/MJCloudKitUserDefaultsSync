@@ -1,9 +1,11 @@
 //
-//  MKiCloudSync.h
-//  iCloud1
+//  MJCloudKitUserDefaultsSync.m
 //
-//  Created by Mugunth Kumar (@mugunthkumar) on 20/11/11.
-//  Copyright (C) 2011-2020 by Steinlogic
+//  Created by Mark Jerde (http://github.com/MarkJerde)
+//  Copyright (C) 2017 by Mark Jerde
+//
+//  Based on MKiCloudSync by Mugunth Kumar (@mugunthkumar)
+//  Portions Copyright (C) 2011-2020 by Steinlogic
 
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to deal
@@ -23,9 +25,11 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 //  THE SOFTWARE.
 
-//  As a side note, you might also consider 
-//	1) tweeting about this mentioning @mugunthkumar
-//	2) A paypal donation to mugunth.kumar@gmail.com
+//  As a side note, you might also consider
+//	1) tweeting about this mentioning @mark_a_jerde
+//	2) A paypal donation to mark.a.jerde@gmail.com
+//	3) tweeting about this mentioning @mugunthkumar for his original contributions
+//	4) A paypal donation to mugunth.kumar@gmail.com
 
 #ifdef DEBUG
 #   define DLog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__);
@@ -37,9 +41,13 @@
 #define ALog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__);
 
 #import <Foundation/Foundation.h>
-#define kMKiCloudSyncNotification @"MKiCloudSyncDidUpdateToLatest"
 
-@interface MKiCloudSync : NSObject
+@interface MJCloudKitUserDefaultsSync : NSObject
 
-+(void) startWithPrefix:(NSString*) prefixToSync;
++(void) startWithPrefix:(NSString*) prefixToSync withContainerIdentifier:(NSString*) containerIdentifier;
++(void) startWithKeyMatchList:(NSArray*) keyMatchList withContainerIdentifier:(NSString*) containerIdentifier;
++(void) stopForKeyMatchList:(NSArray*) keyMatchList;
++(void) addChangeNotificationSelector:(SEL)aSelector withTarget:(nullable id)aTarget;
++(void) removeChangeNotificationsForTarget:(nullable id) aTarget;
++(void) checkCloudKitUpdates;
 @end
