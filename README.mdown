@@ -22,6 +22,10 @@ macOS:
 iOS:
 TBD
 
+### To Do
+* GCD would be preferable to the boolean flags currently used to serialize activity, but CloudKit makes heavy use of asynchronous completion handlers so a solution needs to be worked out to keep blocking our GCD serial queue until the CloudKit completions have been completed.
+* updateFromiCloud should build a list of keys that have been added or had their value change and provide that to sendChangeNotifications to provide to interested parties.  Perhaps even include the old and new values.
+
 ###Notes
 This is currently a beta release.  This initial commit has been demonstrated to
 work but warrants further evaluation and testing.  It includes copious logging
