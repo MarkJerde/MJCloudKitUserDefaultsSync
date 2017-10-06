@@ -35,27 +35,39 @@
 #import "MJCloudKitUserDefaultsSync.h"
 #import <CloudKit/CloudKit.h>
 
-static NSString *prefix;
-static NSArray *matchList;
-static CKDatabase *publicDB;
-static CKDatabase *privateDB;
-static BOOL observingIdentityChanges = NO;
-static BOOL observingActivity = NO;
-static NSTimer *pollCloudKitTimer;
-static int lastKnownLaunches = -1;
+// Things we retain and better release.
+static NSString *prefix = nil;
+static NSArray *matchList = nil;
+static NSTimer *pollCloudKitTimer = nil;
 static NSString *databaseContainerIdentifier = nil;
-static NSString *recordZoneName = @"MJCloudKitUserDefaultsSync";
 static CKRecordZone *recordZone = nil;
 static CKRecordZoneID *recordZoneID = nil;
+static NSMutableArray *changeNotificationHandlers = nil;
+static CKServerChangeToken *previousChangeToken = nil;
+
+// Things we don't retain.
+static CKDatabase *publicDB;
+static CKDatabase *privateDB;
+
+// Status flags.
+static BOOL observingIdentityChanges = NO;
+static BOOL observingActivity = NO;
+
+// Strings we use.
+static NSString *recordZoneName = @"MJCloudKitUserDefaultsSync";
 static NSString *subscriptionID = @"UserDefaultSubscription";
 static NSString *recordType = @"UserDefault";
 static NSString *recordName = @"UserDefaults";
+
+// Flow controls.  It would be nice to replace these with GCD, but CloudKit's async completions complicate this so we have these for now.
 static BOOL oneAutomaticUpdateToICloudAfterUpdateFromICloud = NO;
 static BOOL oneAutomaticUpdateFromICloudAfterUpdateToICloud = NO;
 static BOOL refuseUpdateToICloudUntilAfterUpdateFromICloud = NO;
 static BOOL oneTimeDeleteZoneFromICloud = NO;
 static BOOL updatingToICloud = NO;
 static BOOL updatingFromICloud = NO;
+
+static int lastKnownLaunches = -1;
 //static int additions = 0, changes = 0;
 @implementation MJCloudKitUserDefaultsSync
 
@@ -383,7 +395,6 @@ static BOOL updatingFromICloud = NO;
 	NSLog(@"Stopped.");
 }
 
-static NSMutableArray *changeNotificationHandlers = nil;
 +(void) addChangeNotificationSelector:(SEL)aSelector withTarget:(nullable id)aTarget {
 	NSLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers )
@@ -631,7 +642,6 @@ static NSMutableArray *changeNotificationHandlers = nil;
 	}
 }
 
-CKServerChangeToken *previousChangeToken = nil;
 +(void)pollCloudKit:(NSTimer *)timer {
 	// CKFetchRecordChangesOperation is OS X 10.10 to 10.12, but CKQuerySubscription is 10.12+ so for code exclusive to our pre-CKQuerySubscription support we can use things that were deprecated when CKQuerySubscription was added.
 	DLog(@"Polling");
