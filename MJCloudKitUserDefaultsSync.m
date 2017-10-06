@@ -42,6 +42,7 @@ static NSTimer *pollCloudKitTimer = nil;
 static NSString *databaseContainerIdentifier = nil;
 static CKRecordZone *recordZone = nil;
 static CKRecordZoneID *recordZoneID = nil;
+static CKRecordID *recordID = nil;
 static NSMutableArray *changeNotificationHandlers = nil;
 static CKServerChangeToken *previousChangeToken = nil;
 
@@ -89,7 +90,6 @@ static int lastKnownLaunches = -1;
 	{
 		updatingToICloud = YES;
 		DLog(@"YES.  Updating to iCloud");
-		CKRecordID *recordID = [[CKRecordID alloc] initWithRecordName:recordName zoneID:recordZoneID];
 		[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
 			if (error
 				&& !( nil != [error.userInfo objectForKey:@"ServerErrorDescription" ]
@@ -102,12 +102,14 @@ static int lastKnownLaunches = -1;
 				DLog(@"Updating to iCloud completion");
 				// Modify the record and save it to the database
 
+				BOOL needToReleaseRecord = NO;
 				if (error
 					&& nil != [error.userInfo objectForKey:@"ServerErrorDescription" ]
 					&& [(NSString*)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] )
 				{
 					DLog(@"Updating to iCloud completion creation");
 					record = [[CKRecord alloc] initWithRecordType:recordType recordID:recordID];
+					needToReleaseRecord = YES;
 				}
 
 				NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -182,6 +184,10 @@ static int lastKnownLaunches = -1;
 						[self updateFromiCloud:nil];
 					}
 				}
+
+				// If the record wasn't found, so we had to create it, then we own it and better release it.
+				if ( needToReleaseRecord )
+					[record release];
 			}
 		}];
 	}
@@ -203,7 +209,6 @@ static int lastKnownLaunches = -1;
 	{
 		updatingFromICloud = YES;
 		DLog(@"Updating from iCloud");
-		CKRecordID *recordID = [[CKRecordID alloc] initWithRecordName:recordName zoneID:recordZoneID];
 		[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
 			if (error) {
 				// Error handling for failed fetch from public database
@@ -300,10 +305,15 @@ static int lastKnownLaunches = -1;
 			NSLog(@"Waited for other sync to finish.");
 		}
 
-		if ( !changeNotificationHandlers )
-			changeNotificationHandlers = [[NSMutableArray alloc] init];
+		if ( databaseContainerIdentifier )
+			[databaseContainerIdentifier release];
 		databaseContainerIdentifier = containerIdentifier;
+		[databaseContainerIdentifier retain];
+
+		if ( prefix )
+			[prefix release];
 		prefix = prefixToSync;
+		[prefix retain];
 
 		refuseUpdateToICloudUntilAfterUpdateFromICloud = YES;
 
@@ -325,15 +335,14 @@ static int lastKnownLaunches = -1;
 			NSLog(@"Waited for other sync to finish.");
 		}
 
-		if ( !changeNotificationHandlers )
-			changeNotificationHandlers = [[NSMutableArray alloc] init];
+		if ( databaseContainerIdentifier )
+			[databaseContainerIdentifier release];
 		databaseContainerIdentifier = containerIdentifier;
+		[databaseContainerIdentifier retain];
 
-		NSArray *toRelease = nil;
-		if ( matchList )
-			toRelease = matchList;
-		else
+		if ( !matchList )
 			matchList = [[NSArray alloc] init];
+		NSArray *toRelease = matchList;
 
 		// Add to existing array.
 		matchList = [matchList arrayByAddingObjectsFromArray:keyMatchList];
@@ -341,9 +350,7 @@ static int lastKnownLaunches = -1;
 		matchList = [[NSSet setWithArray:matchList] allObjects];
 
 		[matchList retain];
-
-		if ( toRelease )
-			[toRelease release];
+		[toRelease release];
 
 		NSLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
 
@@ -373,7 +380,6 @@ static int lastKnownLaunches = -1;
 	NSMutableArray *mutableList = [[NSMutableArray alloc] initWithArray:matchList];
 	[mutableList removeObjectsInArray:keyMatchList];
 	matchList = mutableList;
-	[matchList retain];
 
 	[toRelease release];
 
@@ -389,9 +395,26 @@ static int lastKnownLaunches = -1;
 	[self stopObservingIdentityChanges];
 	if ( matchList )
 		[matchList release];
-	matchList = nil;
-	prefix = nil;
-	changeNotificationHandlers = nil;
+	if ( matchList )
+	{
+		[matchList release];
+		matchList = nil;
+	}
+	if ( prefix )
+	{
+		[prefix release];
+		prefix = nil;
+	}
+	if ( databaseContainerIdentifier )
+	{
+		[databaseContainerIdentifier release];
+		databaseContainerIdentifier = nil;
+	}
+	if ( changeNotificationHandlers )
+	{
+		[changeNotificationHandlers release];
+		changeNotificationHandlers = nil;
+	}
 	NSLog(@"Stopped.");
 }
 
@@ -440,8 +463,6 @@ static int lastKnownLaunches = -1;
 
 +(void) attemptToEnable {
 	DLog(@"Attempting to enable");
-	if ( nil == changeNotificationHandlers )
-		changeNotificationHandlers = [NSMutableArray init];
 	[[CKContainer defaultContainer] accountStatusWithCompletionHandler: ^(CKAccountStatus accountStatus, NSError *error) {
 		switch ( accountStatus ) {
 			case CKAccountStatusAvailable:  // is iCloud enabled
@@ -483,9 +504,17 @@ static int lastKnownLaunches = -1;
 		privateDB = [container privateCloudDatabase];
 
 		// Create a zone if needed.
+		if ( recordZoneID )
+			[recordZoneID release];
 		recordZoneID = [[CKRecordZoneID alloc] initWithZoneName:recordZoneName ownerName:CKOwnerDefaultName];
+		if ( recordID )
+			[recordID release];
+		recordID = [[CKRecordID alloc] initWithRecordName:recordName zoneID:recordZoneID];
+		if ( recordZone )
+			[recordZone release];
 		recordZone = [[CKRecordZone alloc] initWithZoneID:recordZoneID];
 		DLog(@"Created CKRecordZone.zoneID %@:%@", recordZone.zoneID.zoneName, recordZone.zoneID.ownerName);
+
 		if ( oneTimeDeleteZoneFromICloud )
 		{
 			observingActivity = NO;
@@ -504,6 +533,7 @@ static int lastKnownLaunches = -1;
 				[self startObservingActivity];
 			};
 			[privateDB addOperation:deleteOperation];
+			[deleteOperation release];
 			return;
 		}
 		CKModifyRecordZonesOperation *operation = [[CKModifyRecordZonesOperation alloc] initWithRecordZonesToSave:@[recordZone] recordZoneIDsToDelete:@[]];
@@ -528,6 +558,7 @@ static int lastKnownLaunches = -1;
 
 		};
 		[privateDB addOperation:operation];
+		[operation release];
 
 		[[NSNotificationCenter defaultCenter] addObserver:self
 												 selector:@selector(updateToiCloud:)
@@ -586,6 +617,7 @@ static int lastKnownLaunches = -1;
 					}
 				}];
 			}
+			[subscription release];
 		}];
 	}
 }
@@ -603,10 +635,32 @@ static int lastKnownLaunches = -1;
 			pollCloudKitTimer = nil;
 		}
 
+		if ( previousChangeToken )
+		{
+			[previousChangeToken release];
+			previousChangeToken = nil;
+		}
+
 		[privateDB deleteSubscriptionWithID:subscriptionID completionHandler:^(NSString * _Nullable subscriptionID, NSError * _Nullable error) {
 			DLog(@"Stopped observing activity.");
 			// We check for an existing subscription before saving a new subscription so the result here doesn't matter."
 		}];
+
+		if ( recordZone )
+		{
+			[recordZone release];
+			recordZone = nil;
+		}
+		if ( recordZoneID )
+		{
+			[recordZoneID release];
+			recordZoneID = nil;
+		}
+		if ( recordID )
+		{
+			[recordID release];
+			recordID = nil;
+		}
 
 		// Clear database connections.
 		publicDB = privateDB = nil;
@@ -655,11 +709,17 @@ static int lastKnownLaunches = -1;
 		if ( nil == operationError )
 		{
 			DLog(@"Polling completion GOOD");
+			if ( previousChangeToken )
+				[previousChangeToken release];
 			previousChangeToken = serverChangeToken;
+			[previousChangeToken retain];
+			if(clientChangeTokenData)
+				[clientChangeTokenData release];
 		}
 	};
 
 	[privateDB addOperation:operation];
+	[operation release];
 
 	/*CKFetchRecordZonesOperation *operation = [[CKFetchRecordZonesOperation alloc] initWithRecordZoneIDs:recordZoneID];
 	operation.fetchAllRecordZonesOperation*/
