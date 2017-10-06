@@ -125,24 +125,33 @@ static int lastKnownLaunches = -1;
 					if ( ( nil != prefix && [key hasPrefix:prefix] )
 						|| ( nil != matchList && [matchList containsObject:key] ) ) {
 						Boolean skip = NO;
-						if ( nil == [record objectForKey: key] )
+
+						if ( [obj isKindOfClass:[NSDictionary class]] )
+						{
+							NSError *error;
+							NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
+							if ( data )
+								obj = data;
+							else
+							{
+								DLog( @"Error serializing %@ to binary: %@", key, error );
+								skip = YES;
+							}
+						}
+
+						if ( skip )
+						{
+						}
+						else if ( nil == [record objectForKey: key] )
 						{
 							DLog(@"Adding %@.", key);
 							additions++;
 						}
-						//else if ( ![(NSString*)record[key] isEqualToString:(NSString*)obj] )
-						else if ( ( [obj isKindOfClass:[NSNumber class]] && [record[key] intValue] != [obj intValue] )
-								 || ( [obj isKindOfClass:[NSString class]] && ![obj isEqualToString:record[key]] ) )
+						else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber*)record[key] intValue] != [(NSNumber*)obj intValue] )
+								 || ( [obj isKindOfClass:[NSString class]] && ![(NSString*)obj isEqualToString:(NSString*)record[key]] )
+								 || ( [obj isKindOfClass:[NSData class]] && ![(NSData*)obj isEqualToData:(NSData*)record[key]] ) )
 						{
 							DLog(@"Changing %@.", key);
-							if ( [obj isKindOfClass:[NSString class]] )
-								DLog(@"obj is NSString -%@-.", obj);
-							if ( [record[key] isKindOfClass:[NSString class]] )
-								DLog(@"record[key] is NSString -%@-.", record[key]);
-							if ( [obj isKindOfClass:[NSString class]] && [record[key] isKindOfClass:[NSString class]] && [obj isEqualToString:record[key]] )
-								DLog(@"They are equal strings.");
-							if ( obj == record[key] )
-								DLog(@"They have equality.");
 							changes++;
 						}
 						else
@@ -150,6 +159,7 @@ static int lastKnownLaunches = -1;
 							DLog(@"Skipping %@.", key);
 							skip = YES;
 						}
+
 						if ( !skip )
 							record[key] = obj;
 					}
@@ -220,37 +230,49 @@ static int lastKnownLaunches = -1;
 				//NSUbiquitousKeyValueStore *iCloudStore = [NSUbiquitousKeyValueStore defaultStore];
 				//NSDictionary *dict = [iCloudStore dictionaryRepresentation];
 
-				/*// prevent NSUserDefaultsDidChangeNotification from being posted while we update from iCloud
-
-				 [[NSNotificationCenter defaultCenter] removeObserver:self
-				 name:NSUserDefaultsDidChangeNotification
-				 object:nil];*/
+				// prevent NSUserDefaultsDidChangeNotification from being posted while we update from iCloud
+				[[NSNotificationCenter defaultCenter] removeObserver:self
+																name:NSUserDefaultsDidChangeNotification
+															  object:nil];
 
 				DLog(@"Got record -%@-_-%@-_-%@-_-%@-",[[[record recordID] zoneID] zoneName],[[[record recordID] zoneID] ownerName],[[record recordID] recordName],[record recordChangeTag]);
 
 				__block int additions = 0, changes = 0;
+				__block NSMutableArray *changedKeys = nil;
 				[[record allKeys] enumerateObjectsUsingBlock:^(id key, NSUInteger idx, BOOL *stop) {
 					if ( ( nil != prefix && [key hasPrefix:prefix] )
 						|| ( nil != matchList && [matchList containsObject:key] ) ) {
+
 						BOOL skip = NO;
 						NSObject *obj = [[NSUserDefaults standardUserDefaults] objectForKey: key];
-						if ( nil == obj )
+						NSObject *originalObj = obj;
+
+						if ( [obj isKindOfClass:[NSDictionary class]] )
+						{
+							NSError *error;
+							NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
+							if ( data )
+								obj = data;
+							else
+							{
+								DLog( @"Error serializing %@ to binary: %@", key, error );
+								skip = YES;
+							}
+						}
+
+						if ( skip )
+						{
+						}
+						else if ( nil == obj )
 						{
 							DLog(@"Adding %@.", key);
 							additions++;
 						}
-						else if ( ( [obj isKindOfClass:[NSNumber class]] && [record[key] intValue] != [obj intValue] )
-								 || ( [obj isKindOfClass:[NSString class]] && ![obj isEqualToString:record[key]] ) )
+						else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber*)record[key] intValue] != [(NSNumber*)obj intValue] )
+								 || ( [obj isKindOfClass:[NSString class]] && ![(NSString*)obj isEqualToString:(NSString*)record[key]] )
+								 || ( [obj isKindOfClass:[NSData class]] && ![(NSData*)obj isEqualToData:(NSData*)record[key]] ) )
 						{
 							DLog(@"Changing %@.", key);
-							if ( [obj isKindOfClass:[NSString class]] )
-								DLog(@"obj is NSString -%@-.", obj);
-							if ( [record[key] isKindOfClass:[NSString class]] )
-								DLog(@"record[key] is NSString -%@-.", record[key]);
-							if ( [obj isKindOfClass:[NSString class]] && [record[key] isKindOfClass:[NSString class]] && [obj isEqualToString:record[key]] && [obj isEqualToString:record[key]] )
-								DLog(@"They are equal strings.");
-							if ( obj == record[key] )
-								DLog(@"They have equality.");
 							changes++;
 						}
 						else
@@ -259,7 +281,33 @@ static int lastKnownLaunches = -1;
 							skip = YES;
 						}
 						if ( !skip )
-							[[NSUserDefaults standardUserDefaults] setObject:[record objectForKey:key] forKey:key];
+						{
+							id remoteObj = [record objectForKey:key];
+							if ( [remoteObj isKindOfClass:[NSData class]]
+								&& !(originalObj && [originalObj isKindOfClass:[NSData class]]) )
+							{
+								NSError *error;
+								id deserialized = [NSPropertyListSerialization propertyListWithData:(NSData*)remoteObj options:NSPropertyListImmutable format:nil error:&error];
+								if ( deserialized )
+									remoteObj = deserialized;
+								else if ( originalObj )
+								{
+									DLog( @"Error deserializing %@ from binary: %@", key, error );
+									skip = YES;
+								}
+								else
+								{
+									DLog( @"Error deserializing %@ from binary, but we didn't have a local copy so we assume it wasn't supposed to be deserialized.  We assume this is okay in order to handle storing NSData that doesn't represent a serialized property list. %@", key, error );
+								}
+							}
+							if ( !skip )
+							{
+								[[NSUserDefaults standardUserDefaults] setObject:remoteObj forKey:key];
+								if ( !changedKeys )
+									changedKeys = [[NSMutableArray alloc] init];
+								[changedKeys addObject:key];
+							}
+						}
 					}
 				}];
 				DLog(@"From iCloud: Adding %i keys.  Modifying %i keys.", additions, changes);
@@ -268,15 +316,16 @@ static int lastKnownLaunches = -1;
 				{
 					DLog(@"Synchronizing defaults.");
 					[[NSUserDefaults standardUserDefaults] synchronize];
-					[self sendChangeNotifications];
+					[self sendChangeNotificationsFor:changedKeys];
+					if ( changedKeys )
+						[changedKeys release];
 				}
 
-				/*// enable NSUserDefaultsDidChangeNotification notifications again
-
-				 [[NSNotificationCenter defaultCenter] addObserver:self
-				 selector:@selector(updateToiCloud:)
-				 name:NSUserDefaultsDidChangeNotification
-				 object:nil];*/
+				// enable NSUserDefaultsDidChangeNotification notifications again
+				[[NSNotificationCenter defaultCenter] addObserver:self
+														 selector:@selector(updateToiCloud:)
+															 name:NSUserDefaultsDidChangeNotification
+														   object:nil];
 
 				refuseUpdateToICloudUntilAfterUpdateFromICloud = NO;
 				updatingFromICloud = NO;
@@ -439,14 +488,14 @@ static int lastKnownLaunches = -1;
 	}
 }
 
-+(void) sendChangeNotifications {
++(void) sendChangeNotificationsFor:(NSArray*) changes {
 	NSLog(@"Sending change notification selector(s).");
 	if (changeNotificationHandlers)
 	{
-		for ( int i = 0 ; i < [changeNotificationHandlers count] / 2 ; i++ )
+		for ( int i = 0 ; i < [changeNotificationHandlers count] ; i+=2 )
 		{
 			NSLog(@"Sending a change notification selector.");
-			[changeNotificationHandlers[i] performSelector:[changeNotificationHandlers[i+1] pointerValue]];
+			[changeNotificationHandlers[i] performSelector:[changeNotificationHandlers[i+1] pointerValue] withObject:changes];
 		}
 	}
 }
