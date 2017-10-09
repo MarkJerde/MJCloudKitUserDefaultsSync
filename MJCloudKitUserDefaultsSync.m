@@ -698,6 +698,11 @@ static int lastKnownLaunches = -1;
 									 subscriptionID:subscriptionID
 											options:CKQuerySubscriptionOptionsFiresOnRecordCreation | CKQuerySubscriptionOptionsFiresOnRecordUpdate | CKQuerySubscriptionOptionsFiresOnRecordDeletion];
 #endif // TARGET_IPHONE_SIMULATOR
+
+	// Disable subscription for now, since it is only available in apps distributed via the App Store.  At some point we will want to detect when there is an aps-environment (Push Notifications) entitlement and use subscription in that case.
+	[subscription release];
+	subscription = nil;
+
 	if ( nil == subscription )
 	{
 		DLog(@"Using polling instead.");
@@ -817,6 +822,7 @@ static int lastKnownLaunches = -1;
 
 +(void)pollCloudKit:(NSTimer *)timer {
 	// CKFetchRecordChangesOperation is OS X 10.10 to 10.12, but CKQuerySubscription is 10.12+ so for code exclusive to our pre-CKQuerySubscription support we can use things that were deprecated when CKQuerySubscription was added.
+	// We will have to revisit this ^ since Push Notifications is only allowed if distributed through the App Store and CKQuerySubscription depends on Push Notifications.
 	DLog(@"Polling");
 	CKFetchRecordChangesOperation *operation = [[CKFetchRecordChangesOperation alloc] initWithRecordZoneID:recordZone.zoneID previousServerChangeToken:previousChangeToken];
 	operation.recordChangedBlock = ^(CKRecord *record) {
