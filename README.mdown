@@ -45,7 +45,11 @@ distributed outside of the App Store.
         // TBD
 
 ### To Do
-* GCD would be preferable to the boolean flags currently used to serialize activity, but CloudKit makes heavy use of asynchronous completion handlers so a solution needs to be worked out to keep blocking our GCD serial queue until the CloudKit completions have been completed.
+* GCD would be preferable to the boolean flags currently used to serialize activity
+	* Create GCD queue: ```syncQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.queue", DISPATCH_QUEUE_SERIAL);```
+	* Initiate sync with a pull synchronously followed by a push via the following two consecutive lines: ```dispatch_async(syncQueue, ^{ [self updateFromiCloud:nil]; });``` and ```dispatch_async(syncQueue, ^{ [self updateToiCloud:nil]; });```
+	* Those same calls, though only one or the other, are used from response handlers that have detected a need to push or pull changes
+	* CloudKit makes heavy use of asynchronous completion handlers so ```dispatch_suspend(syncQueue);``` before exiting updateFromiCloud / updateToiCloud and ```dispatch_resume(syncQueue);``` when the completion handlers are done will block our GCD serial queue until the CloudKit completions have been completed.
 * Create an xcproj and turn this into a framework so it can be used by both ARC and non-ARC projects.  It is currently being used by an old non-ARC project, so it isn't ARC for now.
 * Consider switching to ARC.
 * Evaluate the current model, inherited from MKiCloudSync, of being built on class methods and static variables vs containing the variables in the class and using a singleton vs possibilities of multiple instances of the class.
