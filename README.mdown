@@ -56,10 +56,10 @@ distributed outside of the App Store.
 * Evaluate capability to synchronize other dictionaries beyond just NSUserDefaults.
 * updateFromiCloud could perhaps include the old and new values in the change list provided to sendChangeNotifications to provide to interested parties.
 
-###Compatibility
+### Compatibility
 Care has been taken to enable this library to use newer and better CloudKit capabilities introduced in macOS 10.12 (Sierra) while maintaining compatibility with OS X 10.10 (Yosemite) where CloudKit was first introduced.  The initial project using this library targets Mac OS X 10.7 (Lion), though the CloudKit portions of that project won't do anything on that release.
 
-###Notes
+### Notes
 This is currently a beta release.  This initial commit has been demonstrated to
 work but warrants further evaluation and testing.  It includes copious logging
 statements, a bit of debug code, a bit of commented-out stuff that can be
@@ -79,7 +79,7 @@ apps distributed through the App Store, MJCloudKitUserDefaultsSync will work but
 consider MKiCloudSync.
 
 Read the [blog post](http://blog.mugunthkumar.com/coding/ios-code-mkicloudsync-sync-your-nsuserdefaults-to-icloud-with-a-single-line-of-code) for more on Mugunth Kumar's original solution.
-###License
+### License
 Copyright (C) 2017 by Mark Jerde
 
 Portions Copyright (C) 2011-2020 by Steinlogic
