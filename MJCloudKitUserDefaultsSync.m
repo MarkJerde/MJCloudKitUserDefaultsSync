@@ -69,8 +69,6 @@ static BOOL oneTimeDeleteZoneFromICloud = NO;
 static BOOL updatingToICloud = NO;
 static BOOL updatingFromICloud = NO;
 
-static int lastKnownLaunches = -1;
-//static int additions = 0, changes = 0;
 @implementation MJCloudKitUserDefaultsSync
 
 +(void) updateToiCloud:(NSNotification*) notificationObject {
@@ -115,10 +113,6 @@ static int lastKnownLaunches = -1;
 
 				NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 				NSDictionary *dict = [defaults dictionaryRepresentation];
-				if([defaults objectForKey:@"rememberNum"])
-					DLog(@"oh I got it");
-				if([dict objectForKey:@"rememberNum"])
-					DLog(@"you got it");
 
 				__block int additions = 0, modifications = 0;
 				__block NSMutableDictionary *changes = nil;
@@ -601,7 +595,6 @@ static int lastKnownLaunches = -1;
 			case CKAccountStatusAvailable:  // is iCloud enabled
 				DLog(@"iCloud Available");
 				[self startObservingActivity];
-				//[self incrementCloudKitRecordOfType:@"LaunchCounter" named:@"LaunchCounter" atKey:@"launches"];
 				break;
 
 			case CKAccountStatusNoAccount:
@@ -857,44 +850,6 @@ static int lastKnownLaunches = -1;
 
 	[privateDB addOperation:operation];
 	[operation release];
-
-	/*CKFetchRecordZonesOperation *operation = [[CKFetchRecordZonesOperation alloc] initWithRecordZoneIDs:recordZoneID];
-	operation.fetchAllRecordZonesOperation*/
-	/*let predicate = NSPredicate(format: "UPC = %@", subStr)
-
-	let query = CKQuery(recordType: "Food", predicate: predicate)
-
-	publicDatabase.performQuery(query, inZoneWithID: nil,
-								completionHandler:*/
-}
-
-+(void) incrementCloudKitRecordOfType:(NSString*) recordType named:(NSString*) recordName atKey:(NSString*) recordKey onDB:(CKDatabase*) database {
-	NSLog(@"SHOULD NOT BE CALLED");
-	CKRecordID *recordID = [[CKRecordID alloc] initWithRecordName:recordName];
-	[database fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
-		if(error) {
-			NSLog(@"%@", error);
-			record = [[CKRecord alloc] initWithRecordType:recordType recordID:recordID];
-			[record setValue:@"0" forKey:recordKey];
-		} else {
-			NSLog(@"Fetched successfully");
-		}
-
-		int value = [(NSNumber*)record[recordKey] intValue];
-		value++;
-		lastKnownLaunches = value;
-		record[recordKey] = [NSNumber numberWithInt:value];
-		NSLog(@"%i %@!",value, recordKey);
-
-		[database saveRecord:record completionHandler:^(CKRecord *record, NSError *error) {
-			if(error) {
-				NSLog(@"Uh oh, there was an error updating ... %@", error);
-				[self stopObservingActivity];
-			} else {
-				NSLog(@"Updated record successfully");
-			}
-		}];
-	}];
 }
 
 + (void) dealloc {
