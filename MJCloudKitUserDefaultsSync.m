@@ -43,7 +43,7 @@ static NSString *databaseContainerIdentifier = nil;
 static CKRecordZone *recordZone = nil;
 static CKRecordZoneID *recordZoneID = nil;
 static CKRecordID *recordID = nil;
-static NSMutableArray *changeNotificationHandlers[] = {nil,nil};
+static NSMutableArray *changeNotificationHandlers[] = {nil,nil,nil};
 static CKServerChangeToken *previousChangeToken = nil;
 
 // Things we don't retain.
@@ -211,7 +211,10 @@ static dispatch_queue_t pollQueue = nil;
 								}];
 							}
 							else
+							{
+								[self sendNotificationsFor:MJSyncNotificationSaveSuccess onKeys:changes];
 								[self completeUpdateToiCloudWithChanges:changes];
+							}
 						}];
 					}
 					else
