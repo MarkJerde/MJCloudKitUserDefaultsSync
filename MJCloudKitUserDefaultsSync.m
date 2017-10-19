@@ -45,6 +45,7 @@ static CKRecordZoneID *recordZoneID = nil;
 static CKRecordID *recordID = nil;
 static NSMutableArray *changeNotificationHandlers[] = {nil,nil,nil};
 static CKServerChangeToken *previousChangeToken = nil;
+static NSString *lastUpdateRecordChangeTagReceived = nil;
 
 // Things we don't retain.
 static CKDatabase *publicDB;
@@ -88,6 +89,14 @@ static dispatch_queue_t pollQueue = nil;
 						DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
 						dispatch_resume(syncQueue);
 					}
+				else if ( ![[record recordChangeTag] isEqualToString:lastUpdateRecordChangeTagReceived] ) {
+					// We won't push our content if there is something we haven't received yet.
+
+					// Pull from iCloud now, pushing afterward.
+					[self updateFromiCloud:nil];
+					[self updateToiCloud:nil];
+					dispatch_resume(syncQueue);
+				}
 				else {
 					DLog(@"Updating to iCloud completion");
 					// Modify the record and save it to the database
@@ -260,6 +269,7 @@ static dispatch_queue_t pollQueue = nil;
 																name:NSUserDefaultsDidChangeNotification
 															  object:nil];
 
+				lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 				DLog(@"Got record -%@-_-%@-_-%@-_-%@-",[[[record recordID] zoneID] zoneName],[[[record recordID] zoneID] ownerName],[[record recordID] recordName],[record recordChangeTag]);
 
 				__block int additions = 0, modifications = 0;
