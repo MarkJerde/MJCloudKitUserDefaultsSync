@@ -79,6 +79,11 @@ static dispatch_queue_t pollQueue = nil;
 		}
 		else
 		{
+			if ( nil == privateDB )
+			{
+				DLog(@"Database has been unset.  Not updating to iCloud");
+				return;
+			}
 			DLog(@"YES.  Updating to iCloud");
 			dispatch_suspend(syncQueue);
 			[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
@@ -254,6 +259,11 @@ static dispatch_queue_t pollQueue = nil;
 
 +(void) updateFromiCloud:(NSNotification*) notificationObject {
 	dispatch_async(syncQueue, ^{
+		if ( nil == privateDB )
+		{
+			DLog(@"Database has been unset.  Not updating from iCloud");
+			return;
+		}
 		DLog(@"Updating from iCloud");
 		dispatch_suspend(syncQueue);
 		[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
