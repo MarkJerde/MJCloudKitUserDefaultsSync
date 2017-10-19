@@ -871,7 +871,8 @@ static dispatch_queue_t pollQueue = nil;
 	}
 }
 
-bool alreadyPolling = NO;
+static bool alreadyPolling = NO;
+static CFAbsoluteTime lastPollPokeTime;
 +(void)pollCloudKit:(NSTimer *)timer {
 	// The fetchRecordChangesCompletionBlock below doesn't get called until after the recordChangedBlock below completes.  The former block provides the change token which the poll uses to identify if changes have happened.  Prevent use of the old change token while processing changes, which would of course detect changes and cause excess evaluation, by setting / checking a flag in a serial queue until the completion block which occurs on a different queue causes it to be cleared in the original serial queue.
 	// This is preferable to using a dispatch_suspend / dispatch_resume because it prevents amassing a long queue of serial GCD operations in the event that the CloudKit CKFetchRecordChangesOperation takes more than the polling interval.
@@ -881,6 +882,7 @@ bool alreadyPolling = NO;
 		{
 			DLog(@"Polling");
 			alreadyPolling = YES;
+			lastPollPokeTime = CFAbsoluteTimeGetCurrent();
 
 			// CKFetchRecordChangesOperation is OS X 10.10 to 10.12, but CKQuerySubscription is 10.12+ so for code exclusive to our pre-CKQuerySubscription support we can use things that were deprecated when CKQuerySubscription was added.
 			// We will have to revisit this ^ since Push Notifications is only allowed if distributed through the App Store and CKQuerySubscription depends on Push Notifications.
@@ -912,7 +914,24 @@ bool alreadyPolling = NO;
 			};
 
 			[privateDB addOperation:operation];
-			[operation release];		}
+			[operation release];
+		}
+		else if ( CFAbsoluteTimeGetCurrent() - lastPollPokeTime > 600 )
+		{
+			// If it has been more than ten minutes without a poll response, send another one to try to wake up iCloud since it seems to be slow to realize when we come back online.
+			// Would be better if we didn't send this while offline.
+			lastPollPokeTime = CFAbsoluteTimeGetCurrent();
+
+			DLog(@"Poking");
+			CKFetchRecordChangesOperation *operation = [[CKFetchRecordChangesOperation alloc] initWithRecordZoneID:recordZone.zoneID previousServerChangeToken:previousChangeToken];
+
+			operation.recordChangedBlock = ^(CKRecord *record) { DLog(@"Poke got record change"); };
+
+			operation.fetchRecordChangesCompletionBlock = ^(CKServerChangeToken * _Nullable serverChangeToken, NSData * _Nullable clientChangeTokenData, NSError * _Nullable operationError) { DLog(@"Poke completion"); };
+
+			[privateDB addOperation:operation];
+			[operation release];
+		}
 	});
 }
 
