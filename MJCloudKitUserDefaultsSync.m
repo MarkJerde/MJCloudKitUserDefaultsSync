@@ -704,11 +704,15 @@ static dispatch_queue_t pollQueue = nil;
 
 		// Timers attach to the run loop of the process, which isn't present on all processes, so we must dispatch to the main queue to ensure we have a run loop for the timer.
 		dispatch_async(dispatch_get_main_queue(), ^{
-			pollCloudKitTimer = [[NSTimer scheduledTimerWithTimeInterval:(1.0)
-																  target:self
-																selector:@selector(pollCloudKit:)
-																userInfo:nil
-																 repeats:YES] retain];
+			NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
+			pollCloudKitTimer = [[NSTimer alloc] initWithFireDate:oneSecondFromNow
+												   interval:(1.0)
+													 target:self
+												   selector:@selector(pollCloudKit:)
+												   userInfo:nil
+													repeats:YES];
+			// Assign it to NSRunLoopCommonModes so that it will still poll while the menu is open.  Using a simple NSTimer scheduledTimerWithTimeInterval: would result in polling that stops while the menu is active.  In the past this was okay but with Universal Clipboard a new clipping an arrive while the user has the menu open.
+			[[NSRunLoop currentRunLoop] addTimer:pollCloudKitTimer forMode:NSRunLoopCommonModes];
 		});
 	}
 	else
