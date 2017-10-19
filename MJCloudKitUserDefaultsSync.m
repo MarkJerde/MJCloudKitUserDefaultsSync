@@ -127,17 +127,11 @@ static dispatch_queue_t pollQueue = nil;
 							|| ( nil != matchList && [matchList containsObject:key] ) ) {
 							Boolean skip = NO;
 
-							if ( [obj isKindOfClass:[NSDictionary class]] )
+							if ( nil != obj )
 							{
-								NSError *error;
-								NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
-								if ( data )
-									obj = data;
-								else
-								{
-									DLog( @"Error serializing %@ to binary: %@", key, error );
+								obj = [self serialize:obj forKey:key];
+								if ( nil == obj )
 									skip = YES;
-								}
 							}
 
 							if ( skip )
@@ -196,7 +190,33 @@ static dispatch_queue_t pollQueue = nil;
 										DLog(@"Updating to iCloud completion");
 
 										[changes enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
-											[obj addObject:[newRecord objectForKey:key]];
+											// Add the new remote value and ensure the to, from, and theirs values are all deserialized if necessary.
+
+											NSObject *originalObj = [[NSUserDefaults standardUserDefaults] objectForKey: key];
+											id fromObj = [obj firstObject];
+											if ( nil != fromObj )
+											{
+												fromObj = [self deserialize:fromObj forKey:key similarTo:originalObj];
+												if ( nil == fromObj )
+												{
+													// Failed to deserialize.  Put our value in.
+													fromObj = originalObj;
+												}
+											}
+											id remoteObj = [newRecord objectForKey:key];
+											if ( nil != remoteObj )
+											{
+												remoteObj = [self deserialize:remoteObj forKey:key similarTo:originalObj];
+												if ( nil == remoteObj )
+												{
+													// Failed to deserialize.  Put our value in.
+													remoteObj = [obj lastObject];
+												}
+											}
+
+											obj[0] = fromObj;
+											obj[1] = originalObj;
+											[obj addObject:remoteObj];
 										}];
 
 										NSDictionary *corrections = [self sendNotificationsFor:MJSyncNotificationConflicts onKeys:changes];
@@ -204,7 +224,16 @@ static dispatch_queue_t pollQueue = nil;
 										if ( corrections && [corrections count] )
 										{
 											[corrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
-												newRecord[key] = obj;
+												Boolean skip = NO;
+												if ( nil != obj )
+												{
+													obj = [self serialize:obj forKey:key];
+													if ( nil == obj )
+														skip = YES;
+												}
+
+												if ( !skip )
+													newRecord[key] = obj;
 											}];
 											[corrections release];
 
@@ -257,6 +286,47 @@ static dispatch_queue_t pollQueue = nil;
 	}
 }
 
++(id) serialize:(id)obj forKey:(NSString*)key
+{
+	// Only serialize types that need to be.
+	if ( [obj isKindOfClass:[NSDictionary class]] )
+	{
+		NSError *error;
+		NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
+		if ( data )
+			obj = data;
+		else
+		{
+			DLog( @"Error serializing %@ to binary: %@", key, error );
+			obj = nil;
+		}
+	}
+	return obj;
+}
+
++(id) deserialize:(id)remoteObj forKey:(NSString*)key similarTo:(id)originalObj
+{
+	if ( [remoteObj isKindOfClass:[NSData class]]
+		&& !(originalObj && [originalObj isKindOfClass:[NSData class]]) )
+	{
+		NSError *error;
+		id deserialized = [NSPropertyListSerialization propertyListWithData:(NSData*)remoteObj options:NSPropertyListImmutable format:nil error:&error];
+		if ( deserialized )
+			remoteObj = deserialized;
+		else if ( originalObj )
+		{
+			DLog( @"Error deserializing %@ from binary: %@", key, error );
+			remoteObj = nil;
+		}
+		else
+		{
+			// Keep input remoteObj the same and return as output.
+			DLog( @"Error deserializing %@ from binary, but we didn't have a local copy so we assume it wasn't supposed to be deserialized.  We assume this is okay in order to handle storing NSData that doesn't represent a serialized property list. %@", key, error );
+		}
+	}
+	return remoteObj;
+}
+
 +(void) updateFromiCloud:(NSNotification*) notificationObject {
 	dispatch_async(syncQueue, ^{
 		if ( nil == privateDB )
@@ -292,17 +362,11 @@ static dispatch_queue_t pollQueue = nil;
 						NSObject *obj = [[NSUserDefaults standardUserDefaults] objectForKey: key];
 						NSObject *originalObj = obj;
 
-						if ( [obj isKindOfClass:[NSDictionary class]] )
+						if ( nil != obj )
 						{
-							NSError *error;
-							NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
-							if ( data )
-								obj = data;
-							else
-							{
-								DLog( @"Error serializing %@ to binary: %@", key, error );
+							obj = [self serialize:obj forKey:key];
+							if ( nil == obj )
 								skip = YES;
-							}
 						}
 
 						if ( skip )
@@ -328,23 +392,14 @@ static dispatch_queue_t pollQueue = nil;
 						if ( !skip )
 						{
 							id remoteObj = [record objectForKey:key];
-							if ( [remoteObj isKindOfClass:[NSData class]]
-								&& !(originalObj && [originalObj isKindOfClass:[NSData class]]) )
+
+							if ( nil != remoteObj )
 							{
-								NSError *error;
-								id deserialized = [NSPropertyListSerialization propertyListWithData:(NSData*)remoteObj options:NSPropertyListImmutable format:nil error:&error];
-								if ( deserialized )
-									remoteObj = deserialized;
-								else if ( originalObj )
-								{
-									DLog( @"Error deserializing %@ from binary: %@", key, error );
+								remoteObj = [self deserialize:remoteObj forKey:key similarTo:originalObj];
+								if ( nil == remoteObj )
 									skip = YES;
-								}
-								else
-								{
-									DLog( @"Error deserializing %@ from binary, but we didn't have a local copy so we assume it wasn't supposed to be deserialized.  We assume this is okay in order to handle storing NSData that doesn't represent a serialized property list. %@", key, error );
-								}
 							}
+
 							if ( !skip )
 							{
 								[[NSUserDefaults standardUserDefaults] setObject:remoteObj forKey:key];
