@@ -466,11 +466,11 @@ static dispatch_queue_t pollQueue = nil;
 }
 
 +(void) startWithKeyMatchList:(NSArray*) keyMatchList withContainerIdentifier:(NSString*) containerIdentifier {
-	NSLog(@"Starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
+	DLog(@"Starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	// If we are already running and add criteria while updating to iCloud, we could push to iCloud before pulling the existing value from iCloud.  Avoid this by dispatching into another thread that will wait pause existing activity and wait for it to stop before adding new criteria.
 	dispatch_async(dispatch_get_main_queue(), ^{
-		NSLog(@"Actually starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
+		DLog(@"Actually starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
 
 		if ( !matchList )
@@ -485,7 +485,7 @@ static dispatch_queue_t pollQueue = nil;
 		[matchList retain];
 		[toRelease release];
 
-		NSLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
+		DLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
 
 		[self attemptToEnable];
 	});
@@ -494,7 +494,7 @@ static dispatch_queue_t pollQueue = nil;
 +(void) commonStartInitialStepsOnContainerIdentifier:(NSString*) containerIdentifier {
 	[self pause];
 
-	NSLog(@"Waiting for sync queue to clear before adding new criteria.");
+	DLog(@"Waiting for sync queue to clear before adding new criteria.");
 	if ( !syncQueue )
 	{
 		syncQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.queue", DISPATCH_QUEUE_SERIAL);
@@ -502,7 +502,7 @@ static dispatch_queue_t pollQueue = nil;
 	}
 	dispatch_sync(syncQueue, ^{
 		refuseUpdateToICloudUntilAfterUpdateFromICloud = YES;
-		NSLog(@"Waited for sync queue to clear before adding new criteria.");
+		DLog(@"Waited for sync queue to clear before adding new criteria.");
 	});
 
 	if ( databaseContainerIdentifier )
@@ -521,7 +521,7 @@ static dispatch_queue_t pollQueue = nil;
 }
 
 +(void) stopForKeyMatchList:(NSArray*) keyMatchList {
-	NSLog(@"Stopping match list length %lu from %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
+	DLog(@"Stopping match list length %lu from %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	if ( !matchList )
 		return;
@@ -534,14 +534,14 @@ static dispatch_queue_t pollQueue = nil;
 
 	[toRelease release];
 
-	NSLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
+	DLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
 
 	if ( 0 == matchList.count )
 		[self stop];
 }
 
 +(void) stop {
-	NSLog(@"Stopping.");
+	DLog(@"Stopping.");
 	[self stopObservingActivity];
 	[self stopObservingIdentityChanges];
 	if ( matchList )
@@ -569,11 +569,11 @@ static dispatch_queue_t pollQueue = nil;
 			changeNotificationHandlers[type] = nil;
 		}
 	}
-	NSLog(@"Stopped.");
+	DLog(@"Stopped.");
 }
 
 +(void) addNotificationFor:(MJSyncNotificationType)type withSelector:(SEL)aSelector withTarget:(nullable id)aTarget {
-	NSLog(@"Registering change notification selector.");
+	DLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers[type] )
 		changeNotificationHandlers[type] = [[NSMutableArray alloc] init];
 	[changeNotificationHandlers[type] addObject:aTarget];
@@ -581,26 +581,26 @@ static dispatch_queue_t pollQueue = nil;
 }
 
 +(void) removeNotificationsFor:(MJSyncNotificationType)type forTarget:(nullable id) aTarget {
-	NSLog(@"Removing change notification selector(s).");
+	DLog(@"Removing change notification selector(s).");
 	while ( changeNotificationHandlers[type] )
 	{
 		NSUInteger index = [changeNotificationHandlers[type] indexOfObjectIdenticalTo:aTarget];
 		if ( NSNotFound == index )
 			return;
-		NSLog(@"Removing a change notification selector.");
+		DLog(@"Removing a change notification selector.");
 		[changeNotificationHandlers[type] removeObjectAtIndex:index]; // Target
 		[changeNotificationHandlers[type] removeObjectAtIndex:index]; // Selector
 	}
 }
 
 +(NSDictionary*) sendNotificationsFor:(MJSyncNotificationType)type onKeys:(NSDictionary*) changes {
-	NSLog(@"Sending change notification selector(s).");
+	DLog(@"Sending change notification selector(s).");
 	__block NSMutableDictionary *corrections = nil;
 	if (changeNotificationHandlers[type])
 	{
 		for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i+=2 )
 		{
-			NSLog(@"Sending a change notification selector.");
+			DLog(@"Sending a change notification selector.");
 			NSDictionary *currentCorrections = [changeNotificationHandlers[type][i] performSelector:[changeNotificationHandlers[type][i+1] pointerValue] withObject:changes];
 			if ( currentCorrections )
 			{
@@ -936,8 +936,8 @@ static CFAbsoluteTime lastPollPokeTime;
 }
 
 + (void) dealloc {
-	NSLog(@"Deallocating");
+	DLog(@"Deallocating");
 	[self stop];
-	NSLog(@"Deallocated");
+	DLog(@"Deallocated");
 }
 @end
