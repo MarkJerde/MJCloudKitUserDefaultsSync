@@ -39,6 +39,7 @@
 static NSString *prefix = nil;
 static NSArray *matchList = nil;
 static NSTimer *pollCloudKitTimer = nil;
+static NSTimer *monitorSubscriptionTimer = nil;
 static NSString *databaseContainerIdentifier = nil;
 static CKRecordZone *recordZone = nil;
 static CKRecordZoneID *recordZoneID = nil;
@@ -72,6 +73,8 @@ static dispatch_queue_t startStopQueue = nil;
 // Diagnostic information.
 static BOOL productionMode = NO;
 static CKRecord *lastRecordReceived = nil;
+static CFAbsoluteTime lastResubscribeTime;
+static int resubscribeCount = 0;
 static CFAbsoluteTime lastReceiveTime;
 
 @implementation MJCloudKitUserDefaultsSync
@@ -894,9 +897,40 @@ static CFAbsoluteTime lastReceiveTime;
 			}
 			else
 				dispatch_resume(startStopQueue);
-			[subscription release];
+
+			if ( nil == monitorSubscriptionTimer )
+			{
+				dispatch_async(dispatch_get_main_queue(), ^{
+					NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
+					alreadyPolling = NO;
+					monitorSubscriptionTimer = [[NSTimer alloc] initWithFireDate:oneSecondFromNow
+																		interval:(60.0)
+																		  target:self
+																		selector:@selector(monitorSubscription:)
+																		userInfo:nil
+																		 repeats:YES];
+					// Assign it to NSRunLoopCommonModes so that it will still poll while the menu is open.  Using a simple NSTimer scheduledTimerWithTimeInterval: would result in polling that stops while the menu is active.  In the past this was okay but with Universal Clipboard a new clipping an arrive while the user has the menu open.
+					[[NSRunLoop currentRunLoop] addTimer:monitorSubscriptionTimer forMode:NSRunLoopCommonModes];
+					[subscription release];
+				});
+			}
+			else
+				[subscription release];
 		}];
 	}
+}
+
++(void)monitorSubscription:(NSTimer *)timer {
+	[privateDB fetchSubscriptionWithID:subscriptionID completionHandler:^(CKSubscription * _Nullable existingSubscription, NSError * _Nullable error) {
+		BOOL noSubscription = (nil == existingSubscription);
+		if ( observingActivity && noSubscription )
+			dispatch_async(startStopQueue, ^{
+				dispatch_suspend(startStopQueue);
+				lastResubscribeTime = CFAbsoluteTimeGetCurrent();
+				resubscribeCount++;
+				[self subscribeToDatabase];
+			});
+	}];
 }
 
 +(void) stopObservingActivity {
@@ -1061,7 +1095,8 @@ static CFAbsoluteTime lastPollPokeTime;
 + (NSString *) diagnosticData {
 	NSString *lastPollPoke = [self cfAbsoluteTimeToString:lastPollPokeTime];
 	NSString *lastReceive = [self cfAbsoluteTimeToString:lastReceiveTime];
-	return [NSString stringWithFormat:@"Observing Activity: %@\nObserving Identity: %@\nRemote Notifications Enabled: %@\nProduction: %@\nToken: %@\nLast Poll: %@\nLast Record: %@\nLast Receive: %@",
+	NSString *lastResubscribe = [self cfAbsoluteTimeToString:lastResubscribeTime];
+	return [NSString stringWithFormat:@"Observing Activity: %@\nObserving Identity: %@\nRemote Notifications Enabled: %@\nProduction: %@\nToken: %@\nLast Poll: %@\nLast Record: %@\nLast Receive: %@\nLast Resubscribe: %@\nResubscribe count:%i",
 			observingActivity ? @"YES" : @"NO",
 			observingIdentityChanges ? @"YES" : @"NO",
 			remoteNotificationsEnabled ? @"YES" : @"NO",
@@ -1069,7 +1104,9 @@ static CFAbsoluteTime lastPollPokeTime;
 			previousChangeToken ? previousChangeToken : @"n/a",
 			lastPollPoke ? lastPollPoke : @"n/a",
 			lastRecordReceived ? lastRecordReceived.recordChangeTag : @"n/a",
-			lastReceive ? lastReceive : @"n/a"];
+			lastReceive ? lastReceive : @"n/a",
+			lastResubscribe ? lastResubscribe : @"n/a",
+			resubscribeCount];
 }
 
 + (NSString *) cfAbsoluteTimeToString:(CFAbsoluteTime) value
