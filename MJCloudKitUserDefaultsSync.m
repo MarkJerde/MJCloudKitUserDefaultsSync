@@ -476,6 +476,13 @@ static CFAbsoluteTime lastReceiveTime;
 	// If we are already running and add criteria while updating to iCloud, we could push to iCloud before pulling the existing value from iCloud.  Avoid this by dispatching into another thread that will wait pause existing activity and wait for it to stop before adding new criteria.
 	dispatch_async(startStopQueue, ^{
 		DLog(@"Actually starting with prefix");
+
+		if ( nil == prefixToSync || [prefixToSync isEqualToString:prefix] )
+		{
+			DLog(@"Starting no new prefix.  No action will be taken.");
+			return;
+		}
+
 		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
 
 		if ( prefix )
@@ -499,18 +506,32 @@ static CFAbsoluteTime lastReceiveTime;
 	// If we are already running and add criteria while updating to iCloud, we could push to iCloud before pulling the existing value from iCloud.  Avoid this by dispatching into another thread that will wait pause existing activity and wait for it to stop before adding new criteria.
 	dispatch_async(startStopQueue, ^{
 		DLog(@"Actually starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
-		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
+
+		if ( nil == keyMatchList || 0 == [keyMatchList count] )
+		{
+			DLog(@"Starting no new keys.  No action will be taken.");
+			return;
+		}
 
 		if ( !matchList )
 			matchList = [[NSArray alloc] init];
-		NSArray *toRelease = matchList;
 
 		// Add to existing array.
-		matchList = [matchList arrayByAddingObjectsFromArray:keyMatchList];
+		NSArray *newList = [matchList arrayByAddingObjectsFromArray:keyMatchList];
 		// Remove duplicates.
-		matchList = [[NSSet setWithArray:matchList] allObjects];
+		newList = [[NSSet setWithArray:newList] allObjects];
 
-		[matchList retain];
+		if ( [newList count] == [matchList count] )
+		{
+			DLog(@"Starting no additional new keys.  No action will be taken.");
+			return;
+		}
+
+		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
+
+		// Install new array.
+		NSArray *toRelease = matchList;
+		matchList = [newList retain];
 		[toRelease release];
 
 		DLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
@@ -555,6 +576,7 @@ static CFAbsoluteTime lastReceiveTime;
 	}
 	else
 	{
+		// Question: Rather than stopping observing here, and later enabling again, would it be better to just set a flag for updateTo / updateFrom to do nothing?  The latter would require something to ensure that we notice changes that happened while paused, so the idea is non-trivial.
 		[self stopObservingActivity];
 		[self stopObservingIdentityChanges];
 	}
