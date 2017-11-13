@@ -245,6 +245,12 @@ static dispatch_queue_t startStopQueue = nil;
 													// If we had a conflict on the conflict resolution, just give up for now.
 													DLog(@"CloudKit conflict-resolution Save failure: %@", saveError.localizedDescription);
 												}
+												else
+												{
+													// Save counts as receive, since we have seen what we put in there.
+													[self updateLastRecordReceived:savedRecord];
+
+												}
 
 												[self completeUpdateToiCloudWithChanges:changes];
 											}];
@@ -256,6 +262,9 @@ static dispatch_queue_t startStopQueue = nil;
 							}
 							else
 							{
+								// Save counts as receive, since we have seen what we put in there.
+								[self updateLastRecordReceived:savedRecord];
+
 								[self sendNotificationsFor:MJSyncNotificationSaveSuccess onKeys:changes];
 								[self completeUpdateToiCloudWithChanges:changes];
 							}
@@ -343,6 +352,8 @@ static dispatch_queue_t startStopQueue = nil;
 				DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
 			}
 			else {
+				[self updateLastRecordReceived:record];
+
 				DLog(@"Updating from iCloud completion");
 
 				// prevent NSUserDefaultsDidChangeNotification from being posted while we update from iCloud
@@ -350,7 +361,6 @@ static dispatch_queue_t startStopQueue = nil;
 																name:NSUserDefaultsDidChangeNotification
 															  object:nil];
 
-				lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 				DLog(@"Got record -%@-_-%@-_-%@-_-%@-",[[[record recordID] zoneID] zoneName],[[[record recordID] zoneID] ownerName],[[record recordID] recordName],[record recordChangeTag]);
 
 				__block int additions = 0, modifications = 0;
@@ -1006,6 +1016,13 @@ static CFAbsoluteTime lastPollPokeTime;
 			[operation release];
 		}
 	});
+}
+
++ (void) updateLastRecordReceived:(CKRecord*)record
+{
+	if ( lastUpdateRecordChangeTagReceived )
+		[lastUpdateRecordChangeTagReceived release];
+	lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 }
 
 + (void) dealloc {
