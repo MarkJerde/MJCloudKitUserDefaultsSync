@@ -489,7 +489,7 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) setDelegate:(id<MJCloudKitUserDefaultsSyncDelegate>) aDelegate
+-(void) setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>) aDelegate
 {
 	delegate = aDelegate;
 }
@@ -507,7 +507,7 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void) startWithPrefix:(NSString*) prefixToSync withContainerIdentifier:(NSString*) containerIdentifier {
+-(void) startWithPrefix:(nonnull NSString*) prefixToSync withContainerIdentifier:(nonnull NSString*) containerIdentifier {
 	DLog(@"Starting with prefix");
 
 	if ( !startStopQueue )
@@ -537,7 +537,7 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) startWithKeyMatchList:(NSArray*) keyMatchList withContainerIdentifier:(NSString*) containerIdentifier {
+-(void) startWithKeyMatchList:(nonnull NSArray*) keyMatchList withContainerIdentifier:(nonnull NSString*) containerIdentifier {
 	DLog(@"Starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	if ( !startStopQueue )
@@ -636,7 +636,7 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) stopForKeyMatchList:(NSArray*) keyMatchList {
+-(void) stopForKeyMatchList:(nonnull NSArray*) keyMatchList {
 	DLog(@"Stopping match list length %lu from %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	if ( !startStopQueue )
@@ -703,7 +703,7 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) addNotificationFor:(MJSyncNotificationType)type withSelector:(SEL)aSelector withTarget:(nullable id)aTarget {
+-(void) addNotificationFor:(MJSyncNotificationType)type withSelector:(nonnull SEL)aSelector withTarget:(nonnull id)aTarget {
 	DLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers[type] )
 		changeNotificationHandlers[type] = [[NSMutableArray alloc] init];
@@ -711,7 +711,7 @@ static NSString *const recordName = @"UserDefaults";
 	[changeNotificationHandlers[type] addObject:[NSValue valueWithPointer:aSelector]];
 }
 
--(void) removeNotificationsFor:(MJSyncNotificationType)type forTarget:(nullable id) aTarget {
+-(void) removeNotificationsFor:(MJSyncNotificationType)type forTarget:(nonnull id) aTarget {
 	DLog(@"Removing change notification selector(s).");
 	while ( changeNotificationHandlers[type] )
 	{
@@ -1132,7 +1132,7 @@ static NSString *const recordName = @"UserDefaults";
 	lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 }
 
-- (NSString *) diagnosticData {
+- (nullable NSString *) diagnosticData {
 	NSString *lastPollPoke = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastPollPokeTime];
 	NSString *lastReceive = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastReceiveTime];
 	NSString *lastResubscribe = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastResubscribeTime];
