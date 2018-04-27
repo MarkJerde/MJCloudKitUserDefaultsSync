@@ -92,8 +92,7 @@ static NSString *const recordName = @"UserDefaults";
 	return sharedMJCloudKitUserDefaultsSync;
 }
 
-- (nullable instancetype)init
-{
+- (nullable instancetype)init {
 	self = [super init];
 	if (self) {
 		// Status flags.
@@ -114,17 +113,14 @@ static NSString *const recordName = @"UserDefaults";
 	return self;
 }
 
--(void) updateToiCloud:(NSNotification*) notificationObject {
+- (void)updateToiCloud:(NSNotification *)notificationObject {
 	dispatch_async(syncQueue, ^{
 		DLog(@"Update to iCloud?");
-		if ( refuseUpdateToICloudUntilAfterUpdateFromICloud )
-		{
+		if ( refuseUpdateToICloudUntilAfterUpdateFromICloud ) {
 			DLog(@"NO.  Waiting until after update from iCloud");
 		}
-		else
-		{
-			if ( nil == privateDB )
-			{
+		else {
+			if ( nil == privateDB ) {
 				DLog(@"Database has been unset.  Not updating to iCloud");
 				return;
 			}
@@ -133,7 +129,7 @@ static NSString *const recordName = @"UserDefaults";
 			[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
 				if (error
 					&& !( nil != [error.userInfo objectForKey:@"ServerErrorDescription" ]
-						 && [(NSString*)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] ) ) {
+						 && [(NSString *)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] ) ) {
 						// Error handling for failed fetch from public database
 						DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
 						dispatch_resume(syncQueue);
@@ -153,8 +149,8 @@ static NSString *const recordName = @"UserDefaults";
 					BOOL needToReleaseRecord = NO;
 					if (error
 						&& nil != [error.userInfo objectForKey:@"ServerErrorDescription" ]
-						&& [(NSString*)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] )
-					{
+						&& [(NSString *)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] ) {
+
 						DLog(@"Updating to iCloud completion creation");
 						record = [[CKRecord alloc] initWithRecordType:recordType recordID:recordID];
 						needToReleaseRecord = YES;
@@ -171,36 +167,30 @@ static NSString *const recordName = @"UserDefaults";
 							|| ( nil != matchList && [matchList containsObject:key] ) ) {
 							Boolean skip = NO;
 
-							if ( nil != obj )
-							{
+							if ( nil != obj ) {
 								obj = [MJCloudKitUserDefaultsSync serialize:obj forKey:key];
 								if ( nil == obj )
 									skip = YES;
 							}
 
-							if ( skip )
-							{
+							if ( skip ) {
 							}
-							else if ( nil == [record objectForKey: key] )
-							{
+							else if ( nil == [record objectForKey:key] ) {
 								DLog(@"Adding %@.", key);
 								additions++;
 							}
-							else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber*)record[key] intValue] != [(NSNumber*)obj intValue] )
-									 || ( [obj isKindOfClass:[NSString class]] && ![(NSString*)obj isEqualToString:(NSString*)record[key]] )
-									 || ( [obj isKindOfClass:[NSData class]] && ![(NSData*)obj isEqualToData:(NSData*)record[key]] ) )
-							{
+							else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber *)record[key] intValue] != [(NSNumber *)obj intValue] )
+									 || ( [obj isKindOfClass:[NSString class]] && ![(NSString *)obj isEqualToString:(NSString *)record[key]] )
+									 || ( [obj isKindOfClass:[NSData class]] && ![(NSData *)obj isEqualToData:(NSData *)record[key]] ) ) {
 								DLog(@"Changing %@.", key);
 								modifications++;
 							}
-							else
-							{
+							else {
 								DLog(@"Skipping %@.", key);
 								skip = YES;
 							}
 
-							if ( !skip )
-							{
+							if ( !skip ) {
 								if ( !changes )
 									changes = [[NSMutableDictionary alloc] init];
 
@@ -215,12 +205,10 @@ static NSString *const recordName = @"UserDefaults";
 					}];
 					DLog(@"To iCloud: Adding %i keys.  Modifying %i keys.", additions, modifications);
 
-					if ( additions + modifications > 0 )
-					{
+					if ( additions + modifications > 0 ) {
 						[privateDB saveRecord:record completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
 							DLog(@"Saving to iCloud.");
-							if ( saveError )
-							{
+							if ( saveError ) {
 								// Error handling for failed save to public database
 								DLog(@"CloudKit Save failure: %@", saveError.localizedDescription);
 
@@ -236,23 +224,19 @@ static NSString *const recordName = @"UserDefaults";
 										[changes enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
 											// Add the new remote value and ensure the to, from, and theirs values are all deserialized if necessary.
 
-											NSObject *originalObj = [[NSUserDefaults standardUserDefaults] objectForKey: key];
+											NSObject *originalObj = [[NSUserDefaults standardUserDefaults] objectForKey:key];
 											id fromObj = [obj firstObject];
-											if ( nil != fromObj )
-											{
+											if ( nil != fromObj ) {
 												fromObj = [MJCloudKitUserDefaultsSync deserialize:fromObj forKey:key similarTo:originalObj];
-												if ( nil == fromObj )
-												{
+												if ( nil == fromObj ) {
 													// Failed to deserialize.  Put our value in.
 													fromObj = originalObj;
 												}
 											}
 											id remoteObj = [newRecord objectForKey:key];
-											if ( nil != remoteObj )
-											{
+											if ( nil != remoteObj ) {
 												remoteObj = [MJCloudKitUserDefaultsSync deserialize:remoteObj forKey:key similarTo:originalObj];
-												if ( nil == remoteObj )
-												{
+												if ( nil == remoteObj ) {
 													// Failed to deserialize.  Put our value in.
 													remoteObj = [obj lastObject];
 												}
@@ -265,12 +249,10 @@ static NSString *const recordName = @"UserDefaults";
 
 										NSDictionary *corrections = [self sendNotificationsFor:MJSyncNotificationConflicts onKeys:changes];
 
-										if ( corrections && [corrections count] )
-										{
+										if ( corrections && [corrections count] ) {
 											[corrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
 												Boolean skip = NO;
-												if ( nil != obj )
-												{
+												if ( nil != obj ) {
 													obj = [MJCloudKitUserDefaultsSync serialize:obj forKey:key];
 													if ( nil == obj )
 														skip = YES;
@@ -283,13 +265,11 @@ static NSString *const recordName = @"UserDefaults";
 
 											[privateDB saveRecord:newRecord completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
 												DLog(@"Saving to iCloud.");
-												if ( saveError )
-												{
+												if ( saveError ) {
 													// If we had a conflict on the conflict resolution, just give up for now.
 													DLog(@"CloudKit conflict-resolution Save failure: %@", saveError.localizedDescription);
 												}
-												else
-												{
+												else {
 													// Save counts as receive, since we have seen what we put in there.
 													[self updateLastRecordReceived:savedRecord];
 
@@ -325,13 +305,11 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) completeUpdateToiCloudWithChanges:(NSMutableDictionary*) changes
-{
+- (void)completeUpdateToiCloudWithChanges:(NSMutableDictionary *)changes {
 	// Resume before releasing memory, since there's nothing shared about the memory.
 	dispatch_resume(syncQueue);
 
-	if ( changes )
-	{
+	if ( changes ) {
 		[changes enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
 			[obj release];
 		}];
@@ -339,17 +317,15 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
-+(id) serialize:(id)obj forKey:(NSString*)key
-{
++ (id)serialize:(id)obj
+		 forKey:(NSString *)key {
 	// Only serialize types that need to be.
-	if ( [obj isKindOfClass:[NSDictionary class]] )
-	{
+	if ( [obj isKindOfClass:[NSDictionary class]] ) {
 		NSError *error;
 		NSData *data = [NSPropertyListSerialization dataWithPropertyList:obj format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
 		if ( data )
 			obj = data;
-		else
-		{
+		else {
 			DLog( @"Error serializing %@ to binary: %@", key, error );
 			obj = nil;
 		}
@@ -357,22 +333,20 @@ static NSString *const recordName = @"UserDefaults";
 	return obj;
 }
 
-+(id) deserialize:(id)remoteObj forKey:(NSString*)key similarTo:(id)originalObj
-{
++ (id)deserialize:(id)remoteObj
+		   forKey:(NSString *)key
+		similarTo:(id)originalObj {
 	if ( [remoteObj isKindOfClass:[NSData class]]
-		&& !(originalObj && [originalObj isKindOfClass:[NSData class]]) )
-	{
+		&& !(originalObj && [originalObj isKindOfClass:[NSData class]]) ) {
 		NSError *error;
-		id deserialized = [NSPropertyListSerialization propertyListWithData:(NSData*)remoteObj options:NSPropertyListImmutable format:nil error:&error];
+		id deserialized = [NSPropertyListSerialization propertyListWithData:(NSData *)remoteObj options:NSPropertyListImmutable format:nil error:&error];
 		if ( deserialized )
 			remoteObj = deserialized;
-		else if ( originalObj )
-		{
+		else if ( originalObj ) {
 			DLog( @"Error deserializing %@ from binary: %@", key, error );
 			remoteObj = nil;
 		}
-		else
-		{
+		else {
 			// Keep input remoteObj the same and return as output.
 			DLog( @"Error deserializing %@ from binary, but we didn't have a local copy so we assume it wasn't supposed to be deserialized.  We assume this is okay in order to handle storing NSData that doesn't represent a serialized property list. %@", key, error );
 		}
@@ -380,10 +354,9 @@ static NSString *const recordName = @"UserDefaults";
 	return remoteObj;
 }
 
--(void) updateFromiCloud:(NSNotification*) notificationObject {
+- (void)updateFromiCloud:(NSNotification *)notificationObject {
 	dispatch_async(syncQueue, ^{
-		if ( nil == privateDB )
-		{
+		if ( nil == privateDB ) {
 			DLog(@"Database has been unset.  Not updating from iCloud");
 			return;
 		}
@@ -413,49 +386,41 @@ static NSString *const recordName = @"UserDefaults";
 						|| ( nil != matchList && [matchList containsObject:key] ) ) {
 
 						BOOL skip = NO;
-						NSObject *obj = [[NSUserDefaults standardUserDefaults] objectForKey: key];
+						NSObject *obj = [[NSUserDefaults standardUserDefaults] objectForKey:key];
 						NSObject *originalObj = obj;
 
-						if ( nil != obj )
-						{
+						if ( nil != obj ) {
 							obj = [MJCloudKitUserDefaultsSync serialize:obj forKey:key];
 							if ( nil == obj )
 								skip = YES;
 						}
 
-						if ( skip )
-						{
+						if ( skip ) {
 						}
-						else if ( nil == obj )
-						{
+						else if ( nil == obj ) {
 							DLog(@"Adding %@.", key);
 							additions++;
 						}
-						else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber*)record[key] intValue] != [(NSNumber*)obj intValue] )
-								 || ( [obj isKindOfClass:[NSString class]] && ![(NSString*)obj isEqualToString:(NSString*)record[key]] )
-								 || ( [obj isKindOfClass:[NSData class]] && ![(NSData*)obj isEqualToData:(NSData*)record[key]] ) )
-						{
+						else if ( ( [obj isKindOfClass:[NSNumber class]] && [(NSNumber *)record[key] intValue] != [(NSNumber *)obj intValue] )
+								 || ( [obj isKindOfClass:[NSString class]] && ![(NSString *)obj isEqualToString:(NSString *)record[key]] )
+								 || ( [obj isKindOfClass:[NSData class]] && ![(NSData *)obj isEqualToData:(NSData *)record[key]] ) ) {
 							DLog(@"Changing %@.", key);
 							modifications++;
 						}
-						else
-						{
+						else {
 							DLog(@"Skipping %@.", key);
 							skip = YES;
 						}
-						if ( !skip )
-						{
+						if ( !skip ) {
 							id remoteObj = [record objectForKey:key];
 
-							if ( nil != remoteObj )
-							{
+							if ( nil != remoteObj ) {
 								remoteObj = [MJCloudKitUserDefaultsSync deserialize:remoteObj forKey:key similarTo:originalObj];
 								if ( nil == remoteObj )
 									skip = YES;
 							}
 
-							if ( !skip )
-							{
+							if ( !skip ) {
 								[[NSUserDefaults standardUserDefaults] setObject:remoteObj forKey:key];
 								if ( !changes )
 									changes = [[NSMutableDictionary alloc] init];
@@ -466,8 +431,7 @@ static NSString *const recordName = @"UserDefaults";
 				}];
 				DLog(@"From iCloud: Adding %i keys.  Modifying %i keys.", additions, modifications);
 
-				if ( additions + modifications > 0 )
-				{
+				if ( additions + modifications > 0 ) {
 					DLog(@"Synchronizing defaults.");
 					[[NSUserDefaults standardUserDefaults] synchronize];
 
@@ -489,15 +453,12 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>) aDelegate
-{
-	delegate = aDelegate;
+- (void)setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>)newDelegate {
+	delegate = newDelegate;
 }
 
--(void) setRemoteNotificationsEnabled:(bool) enabled
-{
-	if ( enabled != remoteNotificationsEnabled )
-	{
+- (void)setRemoteNotificationsEnabled:(bool)enabled {
+	if ( enabled != remoteNotificationsEnabled ) {
 		bool resume = observingActivity;
 		if ( observingActivity )
 			[self pause];
@@ -507,11 +468,11 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void) startWithPrefix:(nonnull NSString*) prefixToSync withContainerIdentifier:(nonnull NSString*) containerIdentifier {
+- (void)startWithPrefix:(nonnull NSString *)prefixToSync
+withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 	DLog(@"Starting with prefix");
 
-	if ( !startStopQueue )
-	{
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
@@ -520,8 +481,7 @@ static NSString *const recordName = @"UserDefaults";
 	dispatch_async(startStopQueue, ^{
 		DLog(@"Actually starting with prefix");
 
-		if ( nil == prefixToSync || [prefixToSync isEqualToString:prefix] )
-		{
+		if ( nil == prefixToSync || [prefixToSync isEqualToString:prefix] ) {
 			DLog(@"Starting no new prefix.  No action will be taken.");
 			return;
 		}
@@ -537,11 +497,11 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) startWithKeyMatchList:(nonnull NSArray*) keyMatchList withContainerIdentifier:(nonnull NSString*) containerIdentifier {
+- (void)startWithKeyMatchList:(nonnull NSArray *)keyMatchList
+	  withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 	DLog(@"Starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
-	if ( !startStopQueue )
-	{
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
@@ -550,8 +510,7 @@ static NSString *const recordName = @"UserDefaults";
 	dispatch_async(startStopQueue, ^{
 		DLog(@"Actually starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
-		if ( nil == keyMatchList || 0 == [keyMatchList count] )
-		{
+		if ( nil == keyMatchList || 0 == [keyMatchList count] ) {
 			DLog(@"Starting no new keys.  No action will be taken.");
 			return;
 		}
@@ -564,8 +523,7 @@ static NSString *const recordName = @"UserDefaults";
 		// Remove duplicates.
 		newList = [[NSSet setWithArray:newList] allObjects];
 
-		if ( [newList count] == [matchList count] )
-		{
+		if ( [newList count] == [matchList count] ) {
 			DLog(@"Starting no additional new keys.  No action will be taken.");
 			return;
 		}
@@ -583,12 +541,11 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) commonStartInitialStepsOnContainerIdentifier:(NSString*) containerIdentifier {
+- (void)commonStartInitialStepsOnContainerIdentifier:(NSString *)containerIdentifier {
 	[self pause];
 
 	DLog(@"Waiting for sync queue to clear before adding new criteria.");
-	if ( !syncQueue )
-	{
+	if ( !syncQueue ) {
 		syncQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.queue", DISPATCH_QUEUE_SERIAL);
 		[syncQueue retain];
 	}
@@ -603,31 +560,27 @@ static NSString *const recordName = @"UserDefaults";
 	[databaseContainerIdentifier retain];
 }
 
--(void) pause {
-	if ( !startStopQueue )
-	{
+- (void)pause {
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
 
 	// pause can be called while already on the desired GDC queue.  We can detect this and only dispatch to the queue if not already on it.  This is needed because we pause the queue to wait for completion on a different asynchronous activity.
-	if ( strcmp(dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL), dispatch_queue_get_label(startStopQueue)) )
-	{
+	if ( strcmp(dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL), dispatch_queue_get_label(startStopQueue)) ) {
 		dispatch_async(startStopQueue, ^{
 			[self pause];
 		});
 	}
-	else
-	{
+	else {
 		// Question: Rather than stopping observing here, and later enabling again, would it be better to just set a flag for updateTo / updateFrom to do nothing?  The latter would require something to ensure that we notice changes that happened while paused, so the idea is non-trivial.
 		[self stopObservingActivity];
 		[self stopObservingIdentityChanges];
 	}
 }
 
--(void) resume {
-	if ( !startStopQueue )
-	{
+- (void)resume {
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
@@ -636,11 +589,10 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) stopForKeyMatchList:(nonnull NSArray*) keyMatchList {
+- (void)stopForKeyMatchList:(nonnull NSArray *)keyMatchList {
 	DLog(@"Stopping match list length %lu from %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
-	if ( !startStopQueue )
-	{
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
@@ -664,11 +616,10 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) stop {
+- (void)stop {
 	DLog(@"Stopping.");
 
-	if ( !startStopQueue )
-	{
+	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
 		[startStopQueue retain];
 	}
@@ -676,25 +627,20 @@ static NSString *const recordName = @"UserDefaults";
 	dispatch_async(startStopQueue, ^{
 		[self stopObservingActivity];
 		[self stopObservingIdentityChanges];
-		if ( matchList )
-		{
+		if ( matchList ) {
 			[matchList release];
 			matchList = nil;
 		}
-		if ( prefix )
-		{
+		if ( prefix ) {
 			[prefix release];
 			prefix = nil;
 		}
-		if ( databaseContainerIdentifier )
-		{
+		if ( databaseContainerIdentifier ) {
 			[databaseContainerIdentifier release];
 			databaseContainerIdentifier = nil;
 		}
-		for ( int type = MJSyncNotificationTypeFirst(); type <= MJSyncNotificationTypeLast(); type++ )
-		{
-			if ( changeNotificationHandlers[type] )
-			{
+		for ( int type = MJSyncNotificationTypeFirst(); type <= MJSyncNotificationTypeLast(); type++ ) {
+			if ( changeNotificationHandlers[type] ) {
 				[changeNotificationHandlers[type] release];
 				changeNotificationHandlers[type] = nil;
 			}
@@ -703,7 +649,9 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
--(void) addNotificationFor:(MJSyncNotificationType)type withSelector:(nonnull SEL)aSelector withTarget:(nonnull id)aTarget {
+- (void)addNotificationFor:(MJSyncNotificationType)type
+			  withSelector:(nonnull SEL)aSelector
+				withTarget:(nonnull id)aTarget {
 	DLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers[type] )
 		changeNotificationHandlers[type] = [[NSMutableArray alloc] init];
@@ -711,10 +659,10 @@ static NSString *const recordName = @"UserDefaults";
 	[changeNotificationHandlers[type] addObject:[NSValue valueWithPointer:aSelector]];
 }
 
--(void) removeNotificationsFor:(MJSyncNotificationType)type forTarget:(nonnull id) aTarget {
+- (void)removeNotificationsFor:(MJSyncNotificationType)type
+					 forTarget:(nonnull id)aTarget {
 	DLog(@"Removing change notification selector(s).");
-	while ( changeNotificationHandlers[type] )
-	{
+	while ( changeNotificationHandlers[type] ) {
 		NSUInteger index = [changeNotificationHandlers[type] indexOfObjectIdenticalTo:aTarget];
 		if ( NSNotFound == index )
 			return;
@@ -724,17 +672,15 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(NSDictionary*) sendNotificationsFor:(MJSyncNotificationType)type onKeys:(NSDictionary*) changes {
+- (NSDictionary *)sendNotificationsFor:(MJSyncNotificationType)type
+							   onKeys:(NSDictionary *)changes {
 	DLog(@"Sending change notification selector(s).");
 	__block NSMutableDictionary *corrections = nil;
-	if (changeNotificationHandlers[type])
-	{
-		for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i+=2 )
-		{
+	if ( changeNotificationHandlers[type] ) {
+		for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i+=2 ) {
 			DLog(@"Sending a change notification selector.");
 			NSDictionary *currentCorrections = [changeNotificationHandlers[type][i] performSelector:[changeNotificationHandlers[type][i+1] pointerValue] withObject:changes];
-			if ( currentCorrections )
-			{
+			if ( currentCorrections ) {
 				[currentCorrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
 					if ( !corrections )
 						corrections = [[NSMutableDictionary alloc] init];
@@ -747,22 +693,22 @@ static NSString *const recordName = @"UserDefaults";
 	return corrections;
 }
 
--(void) identityDidChange:(NSNotification*) notificationObject {
+- (void)identityDidChange:(NSNotification *)notificationObject {
 	DLog(@"iCloud Identity Change Detected");
 	dispatch_async(startStopQueue, ^{
 		[self attemptToEnable];
 	});
 }
 
--(void) checkCloudKitUpdates {
+- (void)checkCloudKitUpdates {
 	DLog(@"Got checkCloudKitUpdates");
 	[self updateFromiCloud:nil];
 }
 
--(void) attemptToEnable {
+- (void)attemptToEnable {
 	dispatch_suspend(startStopQueue);
 	DLog(@"Attempting to enable");
-	[[CKContainer defaultContainer] accountStatusWithCompletionHandler: ^(CKAccountStatus accountStatus, NSError *error) {
+	[[CKContainer defaultContainer] accountStatusWithCompletionHandler:^(CKAccountStatus accountStatus, NSError *error) {
 		switch ( accountStatus ) {
 			case CKAccountStatusAvailable:  // is iCloud enabled
 				DLog(@"iCloud Available");
@@ -794,16 +740,15 @@ static NSString *const recordName = @"UserDefaults";
 	}];
 }
 
--(void) startObservingActivity {
+- (void)startObservingActivity {
 	DLog(@"Should start observing activity?");
-	if ( !observingActivity )
-	{
+	if ( !observingActivity ) {
 		DLog(@"YES.  Start observing activity.");
 		observingActivity = YES;
 
 		// Setup database connections.
 		CKContainer *container = [CKContainer containerWithIdentifier:databaseContainerIdentifier];
-		int environmentValue = ((NSNumber*)[[container valueForKey:@"containerID"] valueForKey:@"environment"]).intValue;
+		int environmentValue = ((NSNumber *)[[container valueForKey:@"containerID"] valueForKey:@"environment"]).intValue;
 		productionMode = (1 == environmentValue);
 		publicDB = [container publicCloudDatabase];
 		privateDB = [container privateCloudDatabase];
@@ -820,19 +765,16 @@ static NSString *const recordName = @"UserDefaults";
 		recordZone = [[CKRecordZone alloc] initWithZoneID:recordZoneID];
 		DLog(@"Created CKRecordZone.zoneID %@:%@", recordZone.zoneID.zoneName, recordZone.zoneID.ownerName);
 
-		if ( oneTimeDeleteZoneFromICloud )
-		{
+		if ( oneTimeDeleteZoneFromICloud ) {
 			observingActivity = NO;
 			oneTimeDeleteZoneFromICloud = NO;
 			DLog(@"Deleting CKRecordZone one time.");
 			CKModifyRecordZonesOperation *deleteOperation = [[CKModifyRecordZonesOperation alloc] initWithRecordZonesToSave:@[] recordZoneIDsToDelete:@[recordZoneID]];
 			deleteOperation.modifyRecordZonesCompletionBlock = ^(NSArray *savedRecordZones, NSArray *deletedRecordZoneIDs, NSError *error) {
-				if ( nil != error )
-				{
+				if ( nil != error ) {
 					DLog(@"CloudKit Delete Record Zones failure: %@", error.localizedDescription);
 				}
-				else
-				{
+				else {
 					DLog(@"Deleted CKRecordZone.");
 				}
 				[self startObservingActivity];
@@ -843,15 +785,13 @@ static NSString *const recordName = @"UserDefaults";
 		}
 		CKModifyRecordZonesOperation *operation = [[CKModifyRecordZonesOperation alloc] initWithRecordZonesToSave:@[recordZone] recordZoneIDsToDelete:@[]];
 		operation.modifyRecordZonesCompletionBlock = ^(NSArray *savedRecordZones, NSArray *deletedRecordZoneIDs, NSError *error) {
-			if ( nil != error )
-			{
+			if ( nil != error ) {
 				DLog(@"CloudKit Modify Record Zones failure: %@", error.localizedDescription);
 				[self stopObservingActivity];
 				dispatch_resume(startStopQueue);
 			}
-			else
-			{
-				DLog(@"Recorded CKRecordZone.zoneID %@:%@", ((CKRecordZone*)savedRecordZones[0]).zoneID.zoneName, ((CKRecordZone*)savedRecordZones[0]).zoneID.ownerName);
+			else {
+				DLog(@"Recorded CKRecordZone.zoneID %@:%@", ((CKRecordZone *)savedRecordZones[0]).zoneID.zoneName, ((CKRecordZone *)savedRecordZones[0]).zoneID.ownerName);
 				// Find out when things change
 				[self subscribeToDatabase];
 
@@ -873,7 +813,7 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void) subscribeToDatabase {
+- (void)subscribeToDatabase {
 	DLog(@"Subscribing to database.");
 	NSPredicate *predicate = [NSPredicate predicateWithFormat:@"TRUEPREDICATE" ];
 	CKQuerySubscription *subscription =
@@ -888,13 +828,11 @@ static NSString *const recordName = @"UserDefaults";
 	: nil;
 #endif // TARGET_IPHONE_SIMULATOR
 
-	if ( nil == subscription )
-	{
+	if ( nil == subscription ) {
 		// CKQuerySubscription was added after the core CloudKit APIs, so on OS versions that don't support it we will poll instead as there appears to be no alternative subscription API.
 		DLog(@"Using polling instead.");
 
-		if ( !pollQueue )
-		{
+		if ( !pollQueue ) {
 			pollQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.poll", DISPATCH_QUEUE_SERIAL);
 			[pollQueue retain];
 		}
@@ -914,8 +852,7 @@ static NSString *const recordName = @"UserDefaults";
 			dispatch_resume(startStopQueue);
 		});
 	}
-	else
-	{
+	else {
 		CKNotificationInfo *notification = [[CKNotificationInfo alloc] init];
 		notification.shouldSendContentAvailable = YES;
 		subscription.notificationInfo = notification;
@@ -923,14 +860,12 @@ static NSString *const recordName = @"UserDefaults";
 		DLog(@"Fetching existing subscription.");
 		[privateDB fetchSubscriptionWithID:subscription.subscriptionID completionHandler:^(CKSubscription * _Nullable existingSubscription, NSError * _Nullable error) {
 			DLog(@"Fetched existing subscription.");
-			if ( nil == existingSubscription )
-			{
+			if ( nil == existingSubscription ) {
 				DLog(@"No existing subscription. Saving ours.");
 				// In the not-yet-subscribed-but-everything-working case, error will contain k/v @"ServerErrorDescription" : @"subscription not found"
 				[privateDB saveSubscription:subscription completionHandler:^(CKSubscription * _Nullable subscription, NSError * _Nullable error) {
 					DLog(@"Saved subscription.");
-					if ( nil != error )
-					{
+					if ( nil != error ) {
 						DLog(@"CloudKit Subscription failure: %@", error.localizedDescription);
 						[self stopObservingActivity];
 					}
@@ -940,8 +875,7 @@ static NSString *const recordName = @"UserDefaults";
 			else
 				dispatch_resume(startStopQueue);
 
-			if ( nil == monitorSubscriptionTimer )
-			{
+			if ( nil == monitorSubscriptionTimer ) {
 				dispatch_async(dispatch_get_main_queue(), ^{
 					NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
 					alreadyPolling = NO;
@@ -962,7 +896,7 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void)monitorSubscription:(NSTimer *)timer {
+- (void)monitorSubscription:(NSTimer *)timer {
 	[privateDB fetchSubscriptionWithID:subscriptionID completionHandler:^(CKSubscription * _Nullable existingSubscription, NSError * _Nullable error) {
 		BOOL noSubscription = (nil == existingSubscription);
 		if ( observingActivity && noSubscription )
@@ -975,24 +909,21 @@ static NSString *const recordName = @"UserDefaults";
 	}];
 }
 
--(void) stopObservingActivity {
+- (void)stopObservingActivity {
 	DLog(@"Should stop observing activity?");
-	if ( observingActivity )
-	{
+	if ( observingActivity ) {
 		DLog(@"YES.  Stop observing activity.");
 		// Switch to the syncQueue so we don't cut them off if active.
 		dispatch_sync(syncQueue, ^{
 			DLog(@"Stopping observing activity.");
 			observingActivity = NO;
 
-			if ( pollCloudKitTimer )
-			{
+			if ( pollCloudKitTimer ) {
 				[pollCloudKitTimer invalidate];
 				pollCloudKitTimer = nil;
 			}
 
-			if ( previousChangeToken )
-			{
+			if ( previousChangeToken ) {
 				[previousChangeToken release];
 				previousChangeToken = nil;
 			}
@@ -1002,18 +933,15 @@ static NSString *const recordName = @"UserDefaults";
 				// We check for an existing subscription before saving a new subscription so the result here doesn't matter."
 			}];
 
-			if ( recordZone )
-			{
+			if ( recordZone ) {
 				[recordZone release];
 				recordZone = nil;
 			}
-			if ( recordZoneID )
-			{
+			if ( recordZoneID ) {
 				[recordZoneID release];
 				recordZoneID = nil;
 			}
-			if ( recordID )
-			{
+			if ( recordID ) {
 				[recordID release];
 				recordID = nil;
 			}
@@ -1028,10 +956,9 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void) startObservingIdentityChanges {
+- (void)startObservingIdentityChanges {
 	DLog(@"Should start observing identity changes?");
-	if ( !observingIdentityChanges )
-	{
+	if ( !observingIdentityChanges ) {
 		DLog(@"YES.  Start observing identity changes.");
 		observingIdentityChanges = YES;
 		[[NSNotificationCenter defaultCenter] addObserver:self
@@ -1041,10 +968,9 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void) stopObservingIdentityChanges {
+- (void)stopObservingIdentityChanges {
 	DLog(@"Should stop observing identity changes?");
-	if ( observingIdentityChanges )
-	{
+	if ( observingIdentityChanges ) {
 		DLog(@"YES.  Stop observing identity changes.");
 		observingIdentityChanges = NO;
 		[[NSNotificationCenter defaultCenter] removeObserver:self
@@ -1053,13 +979,12 @@ static NSString *const recordName = @"UserDefaults";
 	}
 }
 
--(void)pollCloudKit:(NSTimer *)timer {
+- (void)pollCloudKit:(NSTimer *)timer {
 	// The fetchRecordChangesCompletionBlock below doesn't get called until after the recordChangedBlock below completes.  The former block provides the change token which the poll uses to identify if changes have happened.  Prevent use of the old change token while processing changes, which would of course detect changes and cause excess evaluation, by setting / checking a flag in a serial queue until the completion block which occurs on a different queue causes it to be cleared in the original serial queue.
 	// This is preferable to using a dispatch_suspend / dispatch_resume because it prevents amassing a long queue of serial GCD operations in the event that the CloudKit CKFetchRecordChangesOperation takes more than the polling interval.
 
 	dispatch_async(pollQueue, ^{
-		if ( !alreadyPolling )
-		{
+		if ( !alreadyPolling ) {
 			DLog(@"Polling");
 			alreadyPolling = YES;
 			lastPollPokeTime = CFAbsoluteTimeGetCurrent();
@@ -1082,14 +1007,13 @@ static NSString *const recordName = @"UserDefaults";
 				// Only complete if the timer is still valid, since it could be invalidated while we were contacting iCloud.
 				if ( !timer.isValid )
 					return;
-				if ( nil == operationError )
-				{
+				if ( nil == operationError ) {
 					DLog(@"Polling completion GOOD");
 					if ( previousChangeToken )
 						[previousChangeToken release];
 					previousChangeToken = serverChangeToken;
 					[previousChangeToken retain];
-					if(clientChangeTokenData)
+					if ( clientChangeTokenData )
 						[clientChangeTokenData release];
 				}
 
@@ -1102,8 +1026,7 @@ static NSString *const recordName = @"UserDefaults";
 			[privateDB addOperation:operation];
 			[operation release];
 		}
-		else if ( CFAbsoluteTimeGetCurrent() - lastPollPokeTime > 600 )
-		{
+		else if ( CFAbsoluteTimeGetCurrent() - lastPollPokeTime > 600 ) {
 			// If it has been more than ten minutes without a poll response, send another one to try to wake up iCloud since it seems to be slow to realize when we come back online.
 			// Would be better if we didn't send this while offline.
 			lastPollPokeTime = CFAbsoluteTimeGetCurrent();
@@ -1121,8 +1044,7 @@ static NSString *const recordName = @"UserDefaults";
 	});
 }
 
-- (void) updateLastRecordReceived:(CKRecord*)record
-{
+- (void)updateLastRecordReceived:(CKRecord *)record {
 	if ( lastRecordReceived )
 		[lastRecordReceived release];
 	lastRecordReceived = [record retain];
@@ -1132,7 +1054,7 @@ static NSString *const recordName = @"UserDefaults";
 	lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 }
 
-- (nullable NSString *) diagnosticData {
+- (nullable NSString *)diagnosticData {
 	NSString *lastPollPoke = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastPollPokeTime];
 	NSString *lastReceive = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastReceiveTime];
 	NSString *lastResubscribe = [MJCloudKitUserDefaultsSync cfAbsoluteTimeToString:lastResubscribeTime];
@@ -1149,8 +1071,7 @@ static NSString *const recordName = @"UserDefaults";
 			resubscribeCount];
 }
 
-+ (NSString *) cfAbsoluteTimeToString:(CFAbsoluteTime) value
-{
++ (NSString *)cfAbsoluteTimeToString:(CFAbsoluteTime)value {
 	if ( 0 == value )
 		return nil; // In our case, we know that the uninitialized value will never be the value assigned, so return nil for that.
 
@@ -1167,7 +1088,7 @@ static NSString *const recordName = @"UserDefaults";
 	return [NSString stringWithFormat:@"%@",dateString];
 }
 
-- (void) dealloc {
+- (void)dealloc {
 	DLog(@"Deallocating");
 	[self stop];
 	[super dealloc];

@@ -69,13 +69,18 @@ static inline MJSyncNotificationType MJSyncNotificationTypeLast() { return MJSyn
 - (nullable instancetype)init;
 #pragma clang diagnostic pop
 
--(void) setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>) aDelegate;
--(void) setRemoteNotificationsEnabled:(bool) enabled;
--(void) startWithPrefix:(nonnull NSString*) prefixToSync withContainerIdentifier:(nonnull NSString*) containerIdentifier;
--(void) startWithKeyMatchList:(nonnull NSArray*) keyMatchList withContainerIdentifier:(nonnull NSString*) containerIdentifier;
--(void) stopForKeyMatchList:(nonnull NSArray*) keyMatchList;
--(void) addNotificationFor:(MJSyncNotificationType)type withSelector:(nonnull SEL)aSelector withTarget:(nonnull id)aTarget;
--(void) removeNotificationsFor:(MJSyncNotificationType)type forTarget:(nonnull id) aTargetadd;
--(void) checkCloudKitUpdates;
--(nullable NSString *) diagnosticData;
+- (void)setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>)newDelegate;
+- (void)setRemoteNotificationsEnabled:(bool)enabled;
+- (void)startWithPrefix:(nonnull NSString *)prefixToSync
+withContainerIdentifier:(nonnull NSString *)containerIdentifier;
+- (void)startWithKeyMatchList:(nonnull NSArray *)keyMatchList
+	  withContainerIdentifier:(nonnull NSString *)containerIdentifier;
+- (void)stopForKeyMatchList:(nonnull NSArray *)keyMatchList;
+- (void)addNotificationFor:(MJSyncNotificationType)type
+			  withSelector:(nonnull SEL)aSelector
+				withTarget:(nonnull id)aTarget;
+- (void)removeNotificationsFor:(MJSyncNotificationType)type
+					 forTarget:(nonnull id)aTargetadd;
+- (void)checkCloudKitUpdates;
+- (nullable NSString *)diagnosticData;
 @end
