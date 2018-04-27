@@ -54,7 +54,7 @@ Objective-C
 `[MJCloudKitUserDefaultsSync checkCloudKitUpdates];`
 to 
 `[[MJCloudKitUserDefaultsSync sharedSync] checkCloudKitUpdates];`
-(sharedSync is nullable, so beware and pick your comfort level.)
+(sharedSync is nullable but Objective-C doesn't mind messages sent to nil, so if sharedSync failed to allocate it would run like that line wasn't there.)
 
 Swift
 `MJCloudKitUserDefaultsSync.checkCloudKitUpdates()`
