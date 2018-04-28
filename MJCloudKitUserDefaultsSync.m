@@ -695,7 +695,10 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 	DLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers[type] )
 		changeNotificationHandlers[type] = [[NSMutableArray alloc] init];
-	[changeNotificationHandlers[type] addObject:[[MJCloudKitUserDefaultsSync_NotificationHander alloc] initWithSelector:aSelector withTarget:aTarget]];
+	
+	MJCloudKitUserDefaultsSync_NotificationHander *notification = [[MJCloudKitUserDefaultsSync_NotificationHander alloc] initWithSelector:aSelector withTarget:aTarget];
+	[changeNotificationHandlers[type] addObject:notification];
+	[notification release];
 }
 
 - (void)removeNotificationsFor:(MJSyncNotificationType)type
@@ -890,6 +893,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		CKNotificationInfo *notification = [[CKNotificationInfo alloc] init];
 		notification.shouldSendContentAvailable = YES;
 		subscription.notificationInfo = notification;
+		[notification release]; // Since notificationInfo is a copy property.
 
 		DLog(@"Fetching existing subscription.");
 		[privateDB fetchSubscriptionWithID:subscription.subscriptionID completionHandler:^(CKSubscription * _Nullable existingSubscription, NSError * _Nullable error) {
