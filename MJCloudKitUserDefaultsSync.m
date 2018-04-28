@@ -41,20 +41,51 @@ static NSString *const subscriptionID = @"UserDefaultSubscription";
 static NSString *const recordType = @"UserDefault";
 static NSString *const recordName = @"UserDefaults";
 
+@interface MJCloudKitUserDefaultsSync_NotificationHander : NSObject
+@end
+@implementation MJCloudKitUserDefaultsSync_NotificationHander {
+	SEL selector;
+	id target;
+}
+
+- (instancetype)initWithSelector:(nonnull SEL)aSelector
+					  withTarget:(nonnull id)aTarget
+{
+	self = [super init];
+	if (self) {
+		// Don't retain these.  If somebody wants to be notified by us, they better remove those notifications before they dealloc.
+		selector = aSelector;
+		target = aTarget;
+	}
+	return self;
+}
+
+- (bool)isTarget:(id)aTarget {
+	return target == aTarget;
+}
+
+- (id)performWithObject:(id)anObject {
+	return [target
+			performSelector:selector
+			withObject:anObject];
+}
+
+@end
+
 @implementation MJCloudKitUserDefaultsSync {
 
 	// Things we retain and better release.
-	NSString *prefix;
-	NSArray *matchList;
-	NSTimer *pollCloudKitTimer;
-	NSTimer *monitorSubscriptionTimer;
-	NSString *databaseContainerIdentifier;
-	CKRecordZone *recordZone;
-	CKRecordZoneID *recordZoneID;
-	CKRecordID *recordID;
-	NSMutableArray *changeNotificationHandlers[3];
-	CKServerChangeToken *previousChangeToken;
-	NSString *lastUpdateRecordChangeTagReceived;
+	NSString *prefix; // Released in stop from dealloc.
+	NSArray *matchList; // Released in stop from dealloc.
+	NSTimer *pollCloudKitTimer; // Released in stopObservingActivity from stop from dealloc.
+	NSTimer *monitorSubscriptionTimer; // Released in stopObservingActivity from stop from dealloc.
+	NSString *databaseContainerIdentifier; // Released in stop from dealloc.
+	CKRecordZone *recordZone; // Released in stop from dealloc.
+	CKRecordZoneID *recordZoneID; // Released in stop from dealloc.
+	CKRecordID *recordID; // Released in stop from dealloc.
+	NSMutableArray<MJCloudKitUserDefaultsSync_NotificationHander *> *changeNotificationHandlers[3]; // Released in stop from dealloc.
+	CKServerChangeToken *previousChangeToken; // Released in stopObservingActivity from stop from dealloc.
+	NSString *lastUpdateRecordChangeTagReceived; // Released in stop from dealloc.
 
 	// Things we don't retain.
 	CKDatabase *publicDB;
@@ -71,13 +102,13 @@ static NSString *const recordName = @"UserDefaults";
 	// Flow controls.
 	BOOL refuseUpdateToICloudUntilAfterUpdateFromICloud;
 	BOOL oneTimeDeleteZoneFromICloud; // To clear the user's sync data from iCloud for testing first-time scenario.
+	// The GCD queues are all released in dealloc.
 	dispatch_queue_t syncQueue;
 	dispatch_queue_t pollQueue;
 	dispatch_queue_t startStopQueue;
 
 	// Diagnostic information.
 	BOOL productionMode;
-	CKRecord *lastRecordReceived;
 	CFAbsoluteTime lastResubscribeTime;
 	int resubscribeCount;
 	CFAbsoluteTime lastReceiveTime;
@@ -120,19 +151,22 @@ static NSString *const recordName = @"UserDefaults";
 			DLog(@"NO.  Waiting until after update from iCloud");
 		}
 		else {
-			if ( nil == privateDB ) {
+			// Store local and retain our DB since we are going to suspend a queue and only resume in the completion handler for a call to this DB.
+			CKDatabase *db = [privateDB retain];
+			if ( nil == db ) {
 				DLog(@"Database has been unset.  Not updating to iCloud");
 				return;
 			}
 			DLog(@"YES.  Updating to iCloud");
 			dispatch_suspend(syncQueue);
-			[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
+			[db fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
 				if (error
 					&& !( nil != [error.userInfo objectForKey:@"ServerErrorDescription" ]
 						 && [(NSString *)[error.userInfo objectForKey:@"ServerErrorDescription" ] isEqualToString:@"Record not found"	] ) ) {
 						// Error handling for failed fetch from public database
 						DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
 						dispatch_resume(syncQueue);
+						[db release];
 					}
 				else if ( ![[record recordChangeTag] isEqualToString:lastUpdateRecordChangeTagReceived] ) {
 					// We won't push our content if there is something we haven't received yet.
@@ -141,6 +175,7 @@ static NSString *const recordName = @"UserDefaults";
 					[self updateFromiCloud:nil];
 					[self updateToiCloud:nil];
 					dispatch_resume(syncQueue);
+					[db release];
 				}
 				else {
 					DLog(@"Updating to iCloud completion");
@@ -206,17 +241,18 @@ static NSString *const recordName = @"UserDefaults";
 					DLog(@"To iCloud: Adding %i keys.  Modifying %i keys.", additions, modifications);
 
 					if ( additions + modifications > 0 ) {
-						[privateDB saveRecord:record completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
+						[db saveRecord:record completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
 							DLog(@"Saving to iCloud.");
 							if ( saveError ) {
 								// Error handling for failed save to public database
 								DLog(@"CloudKit Save failure: %@", saveError.localizedDescription);
 
-								[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *newRecord, NSError *error) {
+								[db fetchRecordWithID:recordID completionHandler:^(CKRecord *newRecord, NSError *error) {
 									if (error) {
 										// Error handling for failed fetch from public database
 										DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
 										[self completeUpdateToiCloudWithChanges:changes];
+										[db release];
 									}
 									else {
 										DLog(@"Updating to iCloud completion");
@@ -249,7 +285,7 @@ static NSString *const recordName = @"UserDefaults";
 
 										NSDictionary *corrections = [self sendNotificationsFor:MJSyncNotificationConflicts onKeys:changes];
 
-										if ( corrections && [corrections count] ) {
+										if ( [corrections count] ) {
 											[corrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
 												Boolean skip = NO;
 												if ( nil != obj ) {
@@ -263,7 +299,7 @@ static NSString *const recordName = @"UserDefaults";
 											}];
 											[corrections release];
 
-											[privateDB saveRecord:newRecord completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
+											[db saveRecord:newRecord completionHandler:^(CKRecord *savedRecord, NSError *saveError) {
 												DLog(@"Saving to iCloud.");
 												if ( saveError ) {
 													// If we had a conflict on the conflict resolution, just give up for now.
@@ -276,10 +312,13 @@ static NSString *const recordName = @"UserDefaults";
 												}
 
 												[self completeUpdateToiCloudWithChanges:changes];
+												[db release];
 											}];
 										}
-										else
+										else {
 											[self completeUpdateToiCloudWithChanges:changes];
+											[db release];
+										}
 									}
 								}];
 							}
@@ -290,11 +329,14 @@ static NSString *const recordName = @"UserDefaults";
 
 								[self sendNotificationsFor:MJSyncNotificationSaveSuccess onKeys:changes];
 								[self completeUpdateToiCloudWithChanges:changes];
+								[db release];
 							}
 						}];
 					}
-					else
+					else {
 						[self completeUpdateToiCloudWithChanges:changes];
+						[db release];
+					}
 
 					// If the record wasn't found, so we had to create it, then we own it and better release it.
 					if ( needToReleaseRecord )
@@ -309,12 +351,10 @@ static NSString *const recordName = @"UserDefaults";
 	// Resume before releasing memory, since there's nothing shared about the memory.
 	dispatch_resume(syncQueue);
 
-	if ( changes ) {
-		[changes enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
-			[obj release];
-		}];
-		[changes release];
-	}
+	[changes enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
+		[obj release];
+	}];
+	[changes release];
 }
 
 + (id)serialize:(id)obj
@@ -356,13 +396,15 @@ static NSString *const recordName = @"UserDefaults";
 
 - (void)updateFromiCloud:(NSNotification *)notificationObject {
 	dispatch_async(syncQueue, ^{
-		if ( nil == privateDB ) {
+		// Store local and retain our DB since we are going to suspend a queue and only resume in the completion handler for a call to this DB.
+		CKDatabase *db = [privateDB retain];
+		if ( nil == db ) {
 			DLog(@"Database has been unset.  Not updating from iCloud");
 			return;
 		}
 		DLog(@"Updating from iCloud");
 		dispatch_suspend(syncQueue);
-		[privateDB fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
+		[db fetchRecordWithID:recordID completionHandler:^(CKRecord *record, NSError *error) {
 			if (error) {
 				// Error handling for failed fetch from public database
 				DLog(@"CloudKit Fetch failure: %@", error.localizedDescription);
@@ -449,6 +491,7 @@ static NSString *const recordName = @"UserDefaults";
 				refuseUpdateToICloudUntilAfterUpdateFromICloud = NO;
 			}
 			dispatch_resume(syncQueue);
+			[db release];
 		}];
 	});
 }
@@ -474,8 +517,11 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
+
+	// Since we are going GCD async.
+	prefixToSync = [prefixToSync retain];
+	containerIdentifier = [containerIdentifier retain];
 
 	// If we are already running and add criteria while updating to iCloud, we could push to iCloud before pulling the existing value from iCloud.  Avoid this by dispatching into another thread that will wait pause existing activity and wait for it to stop before adding new criteria.
 	dispatch_async(startStopQueue, ^{
@@ -487,11 +533,10 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		}
 
 		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
+		[containerIdentifier release];
 
-		if ( prefix )
-			[prefix release];
-		prefix = prefixToSync;
-		[prefix retain];
+		[prefix release];
+		prefix = prefixToSync; // Already retained before we went to GCD async.
 
 		[self attemptToEnable];
 	});
@@ -503,8 +548,11 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
+
+	// Since we are going GCD async.
+	keyMatchList = [keyMatchList retain];
+	containerIdentifier = [containerIdentifier retain];
 
 	// If we are already running and add criteria while updating to iCloud, we could push to iCloud before pulling the existing value from iCloud.  Avoid this by dispatching into another thread that will wait pause existing activity and wait for it to stop before adding new criteria.
 	dispatch_async(startStopQueue, ^{
@@ -520,6 +568,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 		// Add to existing array.
 		NSArray *newList = [matchList arrayByAddingObjectsFromArray:keyMatchList];
+		[keyMatchList release];
 		// Remove duplicates.
 		newList = [[NSSet setWithArray:newList] allObjects];
 
@@ -529,6 +578,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		}
 
 		[self commonStartInitialStepsOnContainerIdentifier:containerIdentifier];
+		[containerIdentifier release];
 
 		// Install new array.
 		NSArray *toRelease = matchList;
@@ -547,23 +597,19 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 	DLog(@"Waiting for sync queue to clear before adding new criteria.");
 	if ( !syncQueue ) {
 		syncQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.queue", DISPATCH_QUEUE_SERIAL);
-		[syncQueue retain];
 	}
 	dispatch_sync(syncQueue, ^{
 		refuseUpdateToICloudUntilAfterUpdateFromICloud = YES;
 		DLog(@"Waited for sync queue to clear before adding new criteria.");
 	});
 
-	if ( databaseContainerIdentifier )
-		[databaseContainerIdentifier release];
-	databaseContainerIdentifier = containerIdentifier;
-	[databaseContainerIdentifier retain];
+	[databaseContainerIdentifier release];
+	databaseContainerIdentifier = [containerIdentifier retain];
 }
 
 - (void)pause {
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
 
 	// pause can be called while already on the desired GDC queue.  We can detect this and only dispatch to the queue if not already on it.  This is needed because we pause the queue to wait for completion on a different asynchronous activity.
@@ -582,7 +628,6 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 - (void)resume {
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
 	dispatch_async(startStopQueue, ^{
 		[self attemptToEnable];
@@ -594,8 +639,10 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
+
+	// Since we are going GCD async.
+	keyMatchList = [keyMatchList retain];
 
 	dispatch_async(startStopQueue, ^{
 		if ( !matchList )
@@ -605,6 +652,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 		NSMutableArray *mutableList = [[NSMutableArray alloc] initWithArray:matchList];
 		[mutableList removeObjectsInArray:keyMatchList];
+		[keyMatchList release];
 		matchList = mutableList;
 
 		[toRelease release];
@@ -621,30 +669,22 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 	if ( !startStopQueue ) {
 		startStopQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.startStopQueue", DISPATCH_QUEUE_SERIAL);
-		[startStopQueue retain];
 	}
 
 	dispatch_async(startStopQueue, ^{
 		[self stopObservingActivity];
 		[self stopObservingIdentityChanges];
-		if ( matchList ) {
-			[matchList release];
-			matchList = nil;
-		}
-		if ( prefix ) {
-			[prefix release];
-			prefix = nil;
-		}
-		if ( databaseContainerIdentifier ) {
-			[databaseContainerIdentifier release];
-			databaseContainerIdentifier = nil;
-		}
+
+		[self releaseClearObject:&matchList];
+		[self releaseClearObject:&prefix];
+		[self releaseClearObject:&databaseContainerIdentifier];
+
 		for ( int type = MJSyncNotificationTypeFirst(); type <= MJSyncNotificationTypeLast(); type++ ) {
-			if ( changeNotificationHandlers[type] ) {
-				[changeNotificationHandlers[type] release];
-				changeNotificationHandlers[type] = nil;
-			}
+			// Collection contents are retained and released by the collection, so no need to release contents here.
+			[self releaseClearObject:&(changeNotificationHandlers[type])];
 		}
+
+		[self releaseClearObject:&lastUpdateRecordChangeTagReceived];
 		DLog(@"Stopped.");
 	});
 }
@@ -655,39 +695,36 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 	DLog(@"Registering change notification selector.");
 	if ( !changeNotificationHandlers[type] )
 		changeNotificationHandlers[type] = [[NSMutableArray alloc] init];
-	[changeNotificationHandlers[type] addObject:aTarget];
-	[changeNotificationHandlers[type] addObject:[NSValue valueWithPointer:aSelector]];
+	[changeNotificationHandlers[type] addObject:[[MJCloudKitUserDefaultsSync_NotificationHander alloc] initWithSelector:aSelector withTarget:aTarget]];
 }
 
 - (void)removeNotificationsFor:(MJSyncNotificationType)type
 					 forTarget:(nonnull id)aTarget {
 	DLog(@"Removing change notification selector(s).");
-	while ( changeNotificationHandlers[type] ) {
-		NSUInteger index = [changeNotificationHandlers[type] indexOfObjectIdenticalTo:aTarget];
-		if ( NSNotFound == index )
-			return;
-		DLog(@"Removing a change notification selector.");
-		[changeNotificationHandlers[type] removeObjectAtIndex:index]; // Target
-		[changeNotificationHandlers[type] removeObjectAtIndex:index]; // Selector
+	for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i++ ) {
+		if ( [changeNotificationHandlers[type][i] isTarget:aTarget] ) {
+			DLog(@"Removing a change notification selector.");
+			[changeNotificationHandlers[type] removeObjectAtIndex:i];
+			i--;
+		}
 	}
 }
 
 - (NSDictionary *)sendNotificationsFor:(MJSyncNotificationType)type
-							   onKeys:(NSDictionary *)changes {
+								onKeys:(NSDictionary *)changes {
 	DLog(@"Sending change notification selector(s).");
 	__block NSMutableDictionary *corrections = nil;
 	if ( changeNotificationHandlers[type] ) {
-		for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i+=2 ) {
+		for ( int i = 0 ; i < [changeNotificationHandlers[type] count] ; i++ ) {
 			DLog(@"Sending a change notification selector.");
-			NSDictionary *currentCorrections = [changeNotificationHandlers[type][i] performSelector:[changeNotificationHandlers[type][i+1] pointerValue] withObject:changes];
-			if ( currentCorrections ) {
-				[currentCorrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
-					if ( !corrections )
-						corrections = [[NSMutableDictionary alloc] init];
-					[corrections setObject:obj forKey:key];
-				}];
-				[currentCorrections release];
-			}
+			NSDictionary *currentCorrections = [changeNotificationHandlers[type][i] performWithObject:changes];
+
+			[currentCorrections enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj, BOOL * _Nonnull stop) {
+				if ( !corrections )
+					corrections = [[NSMutableDictionary alloc] init];
+				[corrections setObject:obj forKey:key];
+			}];
+			[currentCorrections release];
 		}
 	}
 	return corrections;
@@ -702,7 +739,9 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 - (void)checkCloudKitUpdates {
 	DLog(@"Got checkCloudKitUpdates");
-	[self updateFromiCloud:nil];
+	if ( observingActivity ) {
+		[self updateFromiCloud:nil];
+	}
 }
 
 - (void)attemptToEnable {
@@ -717,7 +756,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 			case CKAccountStatusNoAccount:
 				DLog(@"No iCloud account");
-				if ( delegate && [delegate respondsToSelector:@selector(notifyCKAccountStatusNoAccount)] )
+				if ( [delegate respondsToSelector:@selector(notifyCKAccountStatusNoAccount)] )
 					[delegate notifyCKAccountStatusNoAccount];
 				[self stopObservingActivity];
 				dispatch_resume(startStopQueue);
@@ -753,16 +792,18 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		publicDB = [container publicCloudDatabase];
 		privateDB = [container privateCloudDatabase];
 
-		// Create a zone if needed.
-		if ( recordZoneID )
-			[recordZoneID release];
+		// Create a record zone ID.
+		[recordZoneID release];
 		recordZoneID = [[CKRecordZoneID alloc] initWithZoneName:recordZoneName ownerName:CKOwnerDefaultName];
-		if ( recordID )
-			[recordID release];
+
+		// Create a record ID.
+		[recordID release];
 		recordID = [[CKRecordID alloc] initWithRecordName:recordName zoneID:recordZoneID];
-		if ( recordZone )
-			[recordZone release];
+
+		// Create a record zone.
+		[recordZone release];
 		recordZone = [[CKRecordZone alloc] initWithZoneID:recordZoneID];
+
 		DLog(@"Created CKRecordZone.zoneID %@:%@", recordZone.zoneID.zoneName, recordZone.zoneID.ownerName);
 
 		if ( oneTimeDeleteZoneFromICloud ) {
@@ -834,23 +875,16 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 		if ( !pollQueue ) {
 			pollQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.poll", DISPATCH_QUEUE_SERIAL);
-			[pollQueue retain];
 		}
 
-		// Timers attach to the run loop of the process, which isn't present on all processes, so we must dispatch to the main queue to ensure we have a run loop for the timer.
-		dispatch_async(dispatch_get_main_queue(), ^{
-			NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
+		// Start a timer to poll for changes, if there isn't a timer for this already.
+		if ( nil == pollCloudKitTimer ) {
 			alreadyPolling = NO;
-			pollCloudKitTimer = [[NSTimer alloc] initWithFireDate:oneSecondFromNow
-												   interval:(1.0)
-													 target:self
-												   selector:@selector(pollCloudKit:)
-												   userInfo:nil
-													repeats:YES];
-			// Assign it to NSRunLoopCommonModes so that it will still poll while the menu is open.  Using a simple NSTimer scheduledTimerWithTimeInterval: would result in polling that stops while the menu is active.  In the past this was okay but with Universal Clipboard a new clipping an arrive while the user has the menu open.
-			[[NSRunLoop currentRunLoop] addTimer:pollCloudKitTimer forMode:NSRunLoopCommonModes];
-			dispatch_resume(startStopQueue);
-		});
+			[self setStartRepeatingTimer:&pollCloudKitTimer
+							WithInterval:(1.0)
+								selector:@selector(pollCloudKit:)];
+		}
+		dispatch_resume(startStopQueue);
 	}
 	else {
 		CKNotificationInfo *notification = [[CKNotificationInfo alloc] init];
@@ -872,28 +906,50 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 					dispatch_resume(startStopQueue);
 				}];
 			}
-			else
+			else {
 				dispatch_resume(startStopQueue);
-
-			if ( nil == monitorSubscriptionTimer ) {
-				dispatch_async(dispatch_get_main_queue(), ^{
-					NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
-					alreadyPolling = NO;
-					monitorSubscriptionTimer = [[NSTimer alloc] initWithFireDate:oneSecondFromNow
-																		interval:(60.0)
-																		  target:self
-																		selector:@selector(monitorSubscription:)
-																		userInfo:nil
-																		 repeats:YES];
-					// Assign it to NSRunLoopCommonModes so that it will still poll while the menu is open.  Using a simple NSTimer scheduledTimerWithTimeInterval: would result in polling that stops while the menu is active.  In the past this was okay but with Universal Clipboard a new clipping an arrive while the user has the menu open.
-					[[NSRunLoop currentRunLoop] addTimer:monitorSubscriptionTimer forMode:NSRunLoopCommonModes];
-					[subscription release];
-				});
 			}
-			else
-				[subscription release];
+
+			[subscription release];
+
+			// Start a timer to make sure the subscription keeps working, if there isn't a timer for this already.
+			[self setStartRepeatingTimer:&monitorSubscriptionTimer
+							WithInterval:(60.0)
+								selector:@selector(monitorSubscription:)];
 		}];
 	}
+}
+
+- (void)setStartRepeatingTimer:(NSTimer **)timer
+				  WithInterval:(NSTimeInterval)ti
+					  selector:(SEL)s {
+	if ( nil == *timer ) {
+		// Timers attach to the run loop of the process, which isn't present on all processes, so we must dispatch to the main queue to ensure we have a run loop for the timer.
+		dispatch_async(dispatch_get_main_queue(), ^{
+			// Check nil again in case there was a race.
+			if ( nil == *timer ) {
+				NSDate *oneSecondFromNow = [NSDate dateWithTimeIntervalSinceNow:1.0];
+				*timer = [[NSTimer alloc] initWithFireDate:oneSecondFromNow
+												  interval:ti
+													target:self
+												  selector:s
+												  userInfo:nil
+												   repeats:YES];
+				// Assign it to NSRunLoopCommonModes so that it will still poll while the menu is open.  Using a simple NSTimer scheduledTimerWithTimeInterval: would result in polling that stops while the menu is active.  In the past this was okay but with Universal Clipboard a new clipping can arrive while the user has the menu open.
+				[[NSRunLoop currentRunLoop] addTimer:*timer forMode:NSRunLoopCommonModes];
+			}
+		});
+	}
+}
+
+- (void)stopReleaseClearTimer:(NSTimer **)timer {
+	[*timer invalidate];
+	[self releaseClearObject:timer];
+}
+
+- (void)releaseClearObject:(NSObject **)object {
+	[*object release];
+	*object = nil;
 }
 
 - (void)monitorSubscription:(NSTimer *)timer {
@@ -918,33 +974,18 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 			DLog(@"Stopping observing activity.");
 			observingActivity = NO;
 
-			if ( pollCloudKitTimer ) {
-				[pollCloudKitTimer invalidate];
-				pollCloudKitTimer = nil;
-			}
-
-			if ( previousChangeToken ) {
-				[previousChangeToken release];
-				previousChangeToken = nil;
-			}
+			[self stopReleaseClearTimer:&pollCloudKitTimer];
+			[self stopReleaseClearTimer:&monitorSubscriptionTimer];
+			[self releaseClearObject:&previousChangeToken];
 
 			[privateDB deleteSubscriptionWithID:subscriptionID completionHandler:^(NSString * _Nullable subscriptionID, NSError * _Nullable error) {
 				DLog(@"Stopped observing activity.");
 				// We check for an existing subscription before saving a new subscription so the result here doesn't matter."
 			}];
 
-			if ( recordZone ) {
-				[recordZone release];
-				recordZone = nil;
-			}
-			if ( recordZoneID ) {
-				[recordZoneID release];
-				recordZoneID = nil;
-			}
-			if ( recordID ) {
-				[recordID release];
-				recordID = nil;
-			}
+			[self releaseClearObject:&recordZone];
+			[self releaseClearObject:&recordZoneID];
+			[self releaseClearObject:&recordID];
 
 			// Clear database connections.
 			publicDB = privateDB = nil;
@@ -974,7 +1015,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		DLog(@"YES.  Stop observing identity changes.");
 		observingIdentityChanges = NO;
 		[[NSNotificationCenter defaultCenter] removeObserver:self
-												  name:NSUbiquityIdentityDidChangeNotification
+														name:NSUbiquityIdentityDidChangeNotification
 													  object:nil];
 	}
 }
@@ -1009,12 +1050,11 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 					return;
 				if ( nil == operationError ) {
 					DLog(@"Polling completion GOOD");
-					if ( previousChangeToken )
-						[previousChangeToken release];
-					previousChangeToken = serverChangeToken;
-					[previousChangeToken retain];
-					if ( clientChangeTokenData )
-						[clientChangeTokenData release];
+
+					[previousChangeToken release];
+					previousChangeToken = [serverChangeToken retain];
+
+					[clientChangeTokenData release];
 				}
 
 				// Back to the pollQueue to clear the flag since we are now on a different queue.
@@ -1045,12 +1085,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 }
 
 - (void)updateLastRecordReceived:(CKRecord *)record {
-	if ( lastRecordReceived )
-		[lastRecordReceived release];
-	lastRecordReceived = [record retain];
-
-	if ( lastUpdateRecordChangeTagReceived )
-		[lastUpdateRecordChangeTagReceived release];
+	[lastUpdateRecordChangeTagReceived release];
 	lastUpdateRecordChangeTagReceived = [[record recordChangeTag] retain];
 }
 
@@ -1065,7 +1100,7 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 			(productionMode ? @"YES" : @"NO"),
 			previousChangeToken ? previousChangeToken : @"n/a",
 			lastPollPoke ? lastPollPoke : @"n/a",
-			lastRecordReceived ? lastRecordReceived.recordChangeTag : @"n/a",
+			lastUpdateRecordChangeTagReceived ? lastUpdateRecordChangeTagReceived : @"n/a",
 			lastReceive ? lastReceive : @"n/a",
 			lastResubscribe ? lastResubscribe : @"n/a",
 			resubscribeCount];
@@ -1090,8 +1125,44 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 - (void)dealloc {
 	DLog(@"Deallocating");
+
 	[self stop];
+
+	// Complete all queues before completing dealloc.
+	dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+	if ( startStopQueue )
+		dispatch_async(startStopQueue, ^{
+			dispatch_semaphore_signal(sema);
+		});
+	if ( pollQueue )
+		dispatch_async(pollQueue, ^{
+			dispatch_semaphore_signal(sema);
+		});
+	if ( syncQueue )
+		dispatch_async(syncQueue, ^{
+			dispatch_semaphore_signal(sema);
+		});
+	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	dispatch_release(sema);
+
+	// Release all queues after they are all completed.
+	if ( syncQueue ) {
+		dispatch_release(syncQueue);
+		syncQueue = nil;
+	}
+	if ( pollQueue ) {
+		dispatch_release(pollQueue);
+		pollQueue = nil;
+	}
+	if ( startStopQueue ) {
+		dispatch_release(startStopQueue);
+		startStopQueue = nil;
+	}
+
 	[super dealloc];
 	DLog(@"Deallocated");
 }
 @end
+
