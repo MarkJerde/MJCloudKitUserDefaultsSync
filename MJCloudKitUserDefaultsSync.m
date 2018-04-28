@@ -123,7 +123,7 @@ static NSString *const recordName = @"UserDefaults";
 	return sharedMJCloudKitUserDefaultsSync;
 }
 
-- (nullable instancetype)init {
+- (nonnull instancetype)init {
 	self = [super init];
 	if (self) {
 		// Status flags.

@@ -63,11 +63,7 @@ static inline MJSyncNotificationType MJSyncNotificationTypeLast() { return MJSyn
 
 + (nullable instancetype)sharedSync;
 
-// NSObject doesn't specify nullability for init, but traditional memory allocation sense and the standard Objective-C style of "self = [super init]; if (self) { ..." implies that init is nullable.  Specifying nullable here when NSObject has not specified produces a compiler warning which we will temporarily suppress since nullable seems the appropriate specification.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnullability"
-- (nullable instancetype)init;
-#pragma clang diagnostic pop
+- (nonnull instancetype)init;
 
 - (void)setDelegate:(nonnull id<MJCloudKitUserDefaultsSyncDelegate>)newDelegate;
 - (void)setRemoteNotificationsEnabled:(bool)enabled;
