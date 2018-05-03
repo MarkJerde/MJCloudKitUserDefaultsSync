@@ -667,6 +667,10 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 }
 
 - (void)stop {
+	[self stopWithCompletionHandler:nil];
+}
+
+- (void)stopWithCompletionHandler:(void (^)(void))completionHandler {
 	DLog(@"Stopping.");
 
 	if ( !startStopQueue ) {
@@ -688,6 +692,8 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 		[self releaseClearObject:&lastUpdateRecordChangeTagReceived];
 		DLog(@"Stopped.");
+
+		if ( completionHandler ) completionHandler();
 	});
 }
 
