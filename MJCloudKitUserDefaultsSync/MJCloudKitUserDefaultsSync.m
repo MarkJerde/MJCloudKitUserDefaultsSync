@@ -230,7 +230,9 @@ static NSString *const recordName = @"UserDefaults";
 									changes = [[NSMutableDictionary alloc] init];
 
 								NSMutableArray *fromToTheirs = [[NSMutableArray alloc] init];
-								[fromToTheirs addObject:record[key]];
+								NSObject *from = record[key];
+								if ( !from ) from = obj; // There is no from, so the to is the from.
+								[fromToTheirs addObject:from];
 								[fromToTheirs addObject:obj];
 								[changes setObject:fromToTheirs forKey:key];
 
