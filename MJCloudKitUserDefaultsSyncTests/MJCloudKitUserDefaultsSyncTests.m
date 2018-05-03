@@ -7,6 +7,7 @@
 //
 
 #import <XCTest/XCTest.h>
+#import "MJCloudKitUserDefaultsSync.h"
 
 @interface MJCloudKitUserDefaultsSyncTests : XCTestCase
 
@@ -24,9 +25,8 @@
     [super tearDown];
 }
 
-- (void)testExample {
-    // This is an example of a functional test case.
-    // Use XCTAssert and related functions to verify your tests produce the correct results.
+- (void)testSetAndRestoreValueThroughCloudKit {
+	XCTAssertEqual(0, 1, @"Please see UNIT_TEST_MEMORY_LEAKS in MJCloudKitUserDefaultsSync.m for unit test since this framework requires entitlements.");
 }
 
 - (void)testPerformanceExample {
