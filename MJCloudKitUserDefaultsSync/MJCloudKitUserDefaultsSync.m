@@ -107,6 +107,11 @@ static NSString *const recordName = @"UserDefaults";
 	dispatch_queue_t pollQueue;
 	dispatch_queue_t startStopQueue;
 
+	// Count user actions so we can provide completion when all user actions are complete.
+	dispatch_queue_t userActionsCountingQueue;
+	int pendingUserActions;
+	NSMutableArray *completionsWhenNoPendingUserActions;
+
 	// Diagnostic information.
 	BOOL productionMode;
 	CFAbsoluteTime lastResubscribeTime;
@@ -142,6 +147,58 @@ static NSString *const recordName = @"UserDefaults";
 		productionMode = NO;
 	}
 	return self;
+}
+
+- (void)createUserActionsCountingQueue {
+	if ( !userActionsCountingQueue ) {
+		userActionsCountingQueue = dispatch_queue_create("com.MJCloudKitUserDefaultsSync.userActionsCounting", DISPATCH_QUEUE_SERIAL);
+	}
+}
+
+- (void)finishPendingAPICallsWithCompletionHandler:(void (^)(void))completionHandler {
+	[self createUserActionsCountingQueue];
+
+	dispatch_sync(userActionsCountingQueue, ^{
+		if ( !completionsWhenNoPendingUserActions )
+			completionsWhenNoPendingUserActions = [[NSMutableArray alloc] init];
+		[completionsWhenNoPendingUserActions addObject:completionHandler];
+		
+		[self executeCompletionsIfNoPendingUserActions];
+	});
+}
+
+- (void)incrementUserActions {
+	[self createUserActionsCountingQueue];
+
+	dispatch_sync(userActionsCountingQueue, ^{
+		pendingUserActions++;
+	});
+}
+
+- (void)decrementUserActions {
+	[self createUserActionsCountingQueue];
+
+	dispatch_sync(userActionsCountingQueue, ^{
+		if ( pendingUserActions > 0 ) {
+			pendingUserActions--;
+
+			[self executeCompletionsIfNoPendingUserActions];
+		}
+		else {
+			NSLog(@"huh");
+		}
+	});
+}
+
+- (void)executeCompletionsIfNoPendingUserActions {
+	if ( 0 == pendingUserActions
+		&& [completionsWhenNoPendingUserActions count] > 0 ) {
+		for ( int i = 0 ; i < completionsWhenNoPendingUserActions.count ; i++ ) {
+			((void (^)(void))completionsWhenNoPendingUserActions[i])();
+		}
+		[completionsWhenNoPendingUserActions release];
+		completionsWhenNoPendingUserActions = nil;
+	}
 }
 
 - (void)updateToiCloud:(NSNotification *)notificationObject {
@@ -515,6 +572,8 @@ static NSString *const recordName = @"UserDefaults";
 
 - (void)startWithPrefix:(nonnull NSString *)prefixToSync
 withContainerIdentifier:(nonnull NSString *)containerIdentifier {
+	[self incrementUserActions];
+
 	DLog(@"Starting with prefix");
 
 	if ( !startStopQueue ) {
@@ -546,6 +605,8 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 
 - (void)startWithKeyMatchList:(nonnull NSArray *)keyMatchList
 	  withContainerIdentifier:(nonnull NSString *)containerIdentifier {
+	[self incrementUserActions];
+
 	DLog(@"Starting with match list length %lu atop %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	if ( !startStopQueue ) {
@@ -637,6 +698,8 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 }
 
 - (void)stopForKeyMatchList:(nonnull NSArray *)keyMatchList {
+	[self incrementUserActions];
+
 	DLog(@"Stopping match list length %lu from %lu", (unsigned long)[keyMatchList count], (unsigned long)[matchList count]);
 
 	if ( !startStopQueue ) {
@@ -662,7 +725,11 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		DLog(@"Match list length is now %lu", (unsigned long)[matchList count]);
 
 		if ( 0 == matchList.count )
-			[self stop];
+			[self stopWithCompletionHandler:^{
+				[self decrementUserActions];
+			}];
+		else
+			[self decrementUserActions];
 	});
 }
 
@@ -771,18 +838,24 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 					[delegate notifyCKAccountStatusNoAccount];
 				[self stopObservingActivity];
 				dispatch_resume(startStopQueue);
+
+				[self decrementUserActions];
 				break;
 
 			case CKAccountStatusRestricted:
 				DLog(@"iCloud restricted");
 				[self stopObservingActivity];
 				dispatch_resume(startStopQueue);
+
+				[self decrementUserActions];
 				break;
 
 			case CKAccountStatusCouldNotDetermine:
 				DLog(@"Unable to determine iCloud status");
 				[self stopObservingActivity];
 				dispatch_resume(startStopQueue);
+
+				[self decrementUserActions];
 				break;
 		}
 
@@ -852,6 +925,8 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 				// If we don't push after the pull, we won't push until something changes.
 				[self updateFromiCloud:nil];
 				[self updateToiCloud:nil];
+
+				[self decrementUserActions];
 			}
 
 		};
@@ -1172,6 +1247,13 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		dispatch_release(startStopQueue);
 		startStopQueue = nil;
 	}
+	if ( userActionsCountingQueue ) {
+		dispatch_release(userActionsCountingQueue);
+		userActionsCountingQueue = nil;
+	}
+	
+	[completionsWhenNoPendingUserActions release];
+	completionsWhenNoPendingUserActions = nil;
 
 	[super dealloc];
 	DLog(@"Deallocated");
