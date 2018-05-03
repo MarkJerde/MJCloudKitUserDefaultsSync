@@ -42,6 +42,15 @@
 
 #import <Foundation/Foundation.h>
 
+//! Project version number for MJCloudKitUserDefaultsSync.
+FOUNDATION_EXPORT double MJCloudKitUserDefaultsSyncVersionNumber;
+
+//! Project version string for MJCloudKitUserDefaultsSync.
+FOUNDATION_EXPORT const unsigned char MJCloudKitUserDefaultsSyncVersionString[];
+
+// In this header, you should import all the public headers of your framework using statements like #import <MJCloudKitUserDefaultsSync/PublicHeader.h>
+
+
 @protocol MJCloudKitUserDefaultsSyncDelegate <NSObject>
 @optional
 // notifyCKAccountStatusNoAccount is called when:
@@ -72,11 +81,6 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier;
 - (void)startWithKeyMatchList:(nonnull NSArray *)keyMatchList
 	  withContainerIdentifier:(nonnull NSString *)containerIdentifier;
 - (void)stopForKeyMatchList:(nonnull NSArray *)keyMatchList;
-- (void)addNotificationFor:(MJSyncNotificationType)type
-			  withSelector:(nonnull SEL)aSelector
-				withTarget:(nonnull id)aTarget;
-- (void)removeNotificationsFor:(MJSyncNotificationType)type
-					 forTarget:(nonnull id)aTargetadd;
-- (void)checkCloudKitUpdates;
-- (nullable NSString *)diagnosticData;
+- (void)addNotificationFor:(MJSyncNotificationType)type;
+
 @end
