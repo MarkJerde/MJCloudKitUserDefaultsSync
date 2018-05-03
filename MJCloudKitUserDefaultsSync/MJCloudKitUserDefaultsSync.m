@@ -1229,9 +1229,12 @@ withContainerIdentifier:(nonnull NSString *)containerIdentifier {
 		dispatch_async(syncQueue, ^{
 			dispatch_semaphore_signal(sema);
 		});
-	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-	dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	if ( startStopQueue )
+		dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	if ( pollQueue )
+		dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+	if ( syncQueue )
+		dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 	dispatch_release(sema);
 
 	// Release all queues after they are all completed.
